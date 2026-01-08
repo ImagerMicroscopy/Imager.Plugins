@@ -1,0 +1,6 @@
+
+#mesondefine WITH_TI1
+#mesondefine WITH_TI2
+#mesondefine WITH_IX83
+#mesondefine WITH_DUMMYMICROSCOPE
+#mesondefine WITH_DONOTHINGMICROSCOPE
