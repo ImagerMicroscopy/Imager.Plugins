@@ -1,0 +1,21 @@
+#include "DummyEquipmentPlugin.h"
+
+#include "DummyEquipment.h"
+#include "PluginManager.h"
+
+void InitPlugin() {
+    // Imager is starting up. Create all objects and perform all work
+    // needed to start operation.
+
+    // the Manager object needs to know about all equipment provided by the plugin
+    auto& manager = PluginManager::Manager();
+    manager.addLightSource(std::make_shared<DummyLightSource>());
+    manager.addDiscreteMovableComponent(std::make_shared<DummyFilterWheel>());
+    manager.addContinuouslyMovableComponent(std::make_shared<DummyPolarizer>());
+    manager.addRobot(std::make_shared<DummyRobot>());
+}
+
+void ShutdownPlugin() {
+    // Imager is closing.
+    // Perform any necessary cleanup here.
+}
