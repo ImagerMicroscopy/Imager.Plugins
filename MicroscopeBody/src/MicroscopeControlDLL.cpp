@@ -1,4 +1,4 @@
-#define COMPILING_MICROSCOPEDLL_H
+#define COMPILING_IMAGERPLUGIN
 
 #include "MicroscopeControlDLL.h"
 
@@ -29,6 +29,9 @@ const char* ksFilterWheelName = "Filterwheel";
 
 std::shared_ptr<BaseMicroscopeClass> gTheMicroscope;
 void(*printer)(const char*);
+
+// A utility function to store a list of strings in buffers passed by Imager. Returns the number of items actually stored.
+int StoreStringListInBuffers(const std::vector<std::string>& stringList, char** stringBuffers, int nBuffers, int maxNBytesPerName);
 
 void EnsureHasMicroscope() {
     if (gTheMicroscope.get() != nullptr) {
@@ -70,7 +73,7 @@ int HandleExceptions(std::function<void()> func) {
     return 0;
 }
 
-int InitImagerPlugin(void(*printer)(const char*)) {
+int InitImagerPlugin(char* configurationDirPath, void(*printer)(const char*)) {
     return HandleExceptions([&] () {
 		::printer = printer;
 
@@ -264,3 +267,123 @@ int SetStagePosition(double x, double y, double z, int usingHardwareAF, int afOf
         gTheMicroscope->setStagePosition(StagePosition(x, y, z, usingHardwareAF, afOffset));
     });
 }
+
+int ListRobots(char** namesPtr, int nNames, int maxNBytesPerName, int* nNamesReturned) {
+    return HandleExceptions([&] {
+        std::vector<std::string> robotNames;
+        *nNamesReturned = StoreStringListInBuffers(robotNames, namesPtr, nNames, maxNBytesPerName);
+        if (*nNamesReturned != robotNames.size()) {
+            throw std::runtime_error("Could not return all available robots");
+        }
+    });
+}
+
+int ListRobotPrograms(char* robotName, char** encodedProgramsInfoPtr) {
+    return HandleExceptions([&] {
+    });
+}
+
+void ReleaseRobotProgramsInfo(char* info) {
+    delete[] info;
+}
+
+int ExecuteRobotProgram(char* robotName, char* encodedProgramCallParams) {
+    return HandleExceptions([&]() {
+    });
+}
+
+int RobotIsExecuting(char* robotName, int* isExecuting, char* possibleErrorMessage, int maxNBytesForErrorMessage) {
+    return HandleExceptions([&]() {
+    });
+}
+
+int StopRobots() {
+    return HandleExceptions([&]() {
+	});
+}
+
+int ListConnectedCameraNames(char **namesPtr, int nNames, int maxNBytesPerName, int *nNamesReturned) {
+    return HandleExceptions([&]() {
+        *nNamesReturned = 0;
+    });
+}
+
+int GetCameraOptions(char* cameraName, char** encodedOptionsPtr) {
+    return HandleExceptions([&]() {
+        // The camera options need to be encoded as JSON. See CameraPropertiesEncoding.cpp/.h.
+        // Essence of a possible implementation:
+        // std::vector<CameraProperty> properties = camPtr->getCameraProperties();
+        // std::vector<nlohmann::json> encodedProps;
+        // for (const auto& p : properties) {
+        //     encodedProps.push_back(p.encodeAsJSONObject());
+        // }
+        // nlohmann::json object;
+        // object["properties"] = encodedProps;
+        // std::string serialized = object.dump();
+        // *encodedOptionsPtr = new char[serialized.size() + 1];
+        // memcpy(*encodedOptionsPtr, serialized.data(), serialized.size() + 1);
+    });
+}
+
+void ReleaseOptionsData(char* data) {
+    // Release the data the plugin returned in GetCameraOptions(). This function will be called automatically when Imager
+    // has received the data. Possible implementation:
+    // delete[] data;
+}
+
+int SetCameraOption(char* cameraName, char* encodedOption) {
+    return HandleExceptions([&]() {
+        
+    });
+}
+
+int GetFrameRate(char* cameraName, double* frameRate) {
+    return -1;
+}
+
+int IsConfiguredForHardwareTriggering(char* cameraName, int* isConfiguredForHardwareTriggering) {
+    return -1;
+}
+
+int AcquireSingleImage(char* cameraName, uint16_t** imagePtr, int* nRows, int* nCols) {
+    return -1;
+}
+
+int StartAsyncAcquisition(char* cameraName) {
+    return -1;
+}
+
+int StartBoundedAsyncAcquisition(char* cameraName, uint64_t nImagesToAcquire) {
+    return -1;
+}
+
+int GetOldestImageAsyncAcquired(char* cameraName, uint32_t timeoutMillis, uint16_t** imagePtr, int* nRows, int* nCols, double* timeStamp) {
+    return -1;
+}
+
+void ReleaseImageData(uint16_t* imagePtr) {
+    
+}
+
+int AbortAsyncAcquisition(char* cameraName) {
+    return -1;
+}
+
+void GetLastSCCamError(char* msgBuf, size_t bufSize) {
+    msgBuf[0] = 0;
+}
+
+// A utility function to store a list of strings in buffers passed by Imager. Returns the number of items actually stored.
+int StoreStringListInBuffers(const std::vector<std::string>& stringList, char** stringBuffers, int nBuffers, int maxNBytesPerName) {
+    int nStrings = (int)stringList.size();
+    int nItemsToStore = std::min(nStrings, nBuffers);
+    for (int i = 0; i < nItemsToStore; ++i) {
+        const std::string& item = stringList.at(i);
+        if (item.size() > maxNBytesPerName - 1) {   // '-1' so the trailing nil can be stored
+            throw std::runtime_error("buffer too small to store item \"" + item + "\"");
+        }
+        snprintf(stringBuffers[i], maxNBytesPerName, "%s", item.c_str());
+    }
+    return nItemsToStore;
+}
+
