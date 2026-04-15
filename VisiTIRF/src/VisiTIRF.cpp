@@ -238,35 +238,30 @@ int ListRobots(char** namesPtr, int nNames, int maxNBytesPerName, int* nNamesRet
     });
 }
 
-int ListRobotPrograms(char* robotName, char** namesPtr, int nNames, int maxNBytesPerName, int* nNamesReturned) {
+int ListRobotPrograms(char* robotName, char** encodedProgramsInfoPtr) {
     return HandleExceptions([&] {
-        std::vector<std::string> programNames; // = <a call to a function you created>
-        *nNamesReturned = StoreStringListInBuffers(programNames, namesPtr, nNames, maxNBytesPerName);
-        if (*nNamesReturned != programNames.size()) {
-            throw std::runtime_error("Could not return all available robot programs");
-        }
+        throw std::logic_error("No robots");
+    });
+}
+void ReleaseRobotProgramsInfo(char* info) {
+    HandleExceptions([&] {
+        throw std::logic_error("No robots");
     });
 }
 
-int ListRobotProgramArgumentsInfo(char* robotName, char* programName, char** encodedArgumentsPtr) {
-    return HandleExceptions([&]() {
-
+int ExecuteRobotProgram(char* robotName, char* encodedProgramCallParams) {
+    return HandleExceptions([&] {
+        throw std::logic_error("No robots");
     });
 }
-
-void ReleaseRobotProgramArgumentsInfo(char* data) {
-
-}
-
-int ExecuteRobotProgram(char* robotName, char* programName, char* programArguments) {
-    return HandleExceptions([&]() {
-
+int RobotIsExecuting(char* robotName, int* isExecuting, char* possibleErrorMessage, int maxNBytesForErrorMessage) {
+    return HandleExceptions([&] {
+        throw std::logic_error("No robots");
     });
 }
-
-int StopRobot() {
-    return HandleExceptions([&]() {
-
+int StopRobots() {
+    return HandleExceptions([&] {
+        throw std::logic_error("No robots");
     });
 }
 

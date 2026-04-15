@@ -19,7 +19,7 @@
     #endif
 #endif
 
-#define IMAGER_API_VERSION 2
+#define IMAGER_API_VERSION 3
 
 #ifdef __cplusplus
 extern "C" {
@@ -54,11 +54,11 @@ extern "C" {
 
     // Robots
     LIBSPEC int ListRobots(char** namesPtr, int nNames, int maxNBytesPerName, int* nNamesReturned);
-    LIBSPEC int ListRobotPrograms(char* robotName, char** namesPtr, int nNames, int maxNBytesPerName, int* nNamesReturned);
-    LIBSPEC int ListRobotProgramArgumentsInfo(char* robotName, char* programName, char** encodedArgumentsPtr);
-    LIBSPEC void ReleaseRobotProgramArgumentsInfo(char* data);
-    LIBSPEC int ExecuteRobotProgram(char* robotName, char* programName, char* programArguments);
-    LIBSPEC int StopRobot();
+    LIBSPEC int ListRobotPrograms(char* robotName, char** encodedProgramsInfoPtr);
+    LIBSPEC void ReleaseRobotProgramsInfo(char* info);
+    LIBSPEC int ExecuteRobotProgram(char* robotName, char* encodedProgramCallParams);
+    LIBSPEC int RobotIsExecuting(char* robotName, int* isExecuting, char* possibleErrorMessage, int maxNBytesForErrorMessage);
+    LIBSPEC int StopRobots();
 
     // Cameras
     LIBSPEC int ListConnectedCameraNames(char **namesPtr, int nNames, int maxNBytesPerName, int *nNamesReturned);
