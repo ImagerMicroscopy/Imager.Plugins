@@ -106,12 +106,12 @@ std::string DummyRobot::getName() const {
 
 std::vector<RobotProgramDescription> DummyRobot::getProgramDescriptions() const {
     RobotProgramDescription program1("DiscreteArgProgram");
-    program1.addArgument({"DiscreteArg", {"Option1", "Option2", "Option3"}});
+    program1.addArgument(RobotProgramDiscreteArgumentInfo{"DiscreteArg", {"Option1", "Option2", "Option3"}});
     RobotProgramDescription program2("ContinuousArgProgram");
-    program2.addArgument({"ContinuousArg", 0.0, 100.0, 0.5});
+    program2.addArgument(RobotProgramContinuousArgumentInfo{"ContinuousArg", 0.0, 100.0, 0.5});
     RobotProgramDescription program3("MixedArgProgram");
-    program3.addArgument({"DiscreteArg", {"OptionA", "OptionB"}});
-    program3.addArgument({"ContinuousArg", -50.0, 50.0, 1.0});
+    program3.addArgument(RobotProgramDiscreteArgumentInfo{"DiscreteArg", {"OptionA", "OptionB"}});
+    program3.addArgument(RobotProgramContinuousArgumentInfo{"ContinuousArg", -50.0, 50.0, 1.0});
     return {program1, program2, program3};
 }
 
