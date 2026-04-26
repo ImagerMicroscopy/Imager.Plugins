@@ -61,6 +61,9 @@ public:
     OlympusIX83();
     ~OlympusIX83();
 
+    OlympusIX83(const OlympusIX83&) = delete;
+    OlympusIX83& operator=(const OlympusIX83&) = delete;
+
     std::vector<std::shared_ptr<LightSource>> getLightSources() { return {}; }
     std::vector<std::shared_ptr<DiscreteMovableComponent>> getDiscreteMovableComponents();
     std::vector<std::shared_ptr<ContinuouslyMovableComponent>> getContinuouslyMovableComponents() { return {}; }
