@@ -1,4 +1,0 @@
-option('microscope_type', type : 'combo', 
-       choices : ['nikon_ti1', 'nikon_ti2', 'olympus_ix83', 'dummy', 'do_nothing'], 
-       value : 'dummy',
-       description : 'Select the microscope hardware target')
