@@ -19,17 +19,13 @@ add_global_arguments('-DIMAGER_EQUIPMENT_NAME="' + plugin_name + '"', language :
 # Fetch the core Imager plugin support files
 imager_core_dep = dependency('imagerplugincore')
 
-# Fetch nlohmann_json dependency 
-# (Automatically resolved by subprojects/nlohmann_json.wrap)
-json_dep = dependency('nlohmann_json')
-
 # Define the shared library (DLL) target for the plugin
 shared_library(plugin_name,
   'src/DummyEquipmentPlugin.cpp',
   'src/DummyEquipment.cpp',
   
   include_directories : [],
-  dependencies : [json_dep, imager_core_dep],
+  dependencies : [imager_core_dep],
   name_suffix : 'imagerplugin', # Change the output file extension
   cpp_args : ['-DNOMINMAX'],
 )

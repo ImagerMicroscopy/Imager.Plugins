@@ -20,7 +20,6 @@ add_global_arguments('-DIMAGER_EQUIPMENT_NAME="' + plugin_name + '"', language :
 imager_core_dep = dependency('imagerplugincore')
 
 # Fetch dependencies
-json_dep = dependency('nlohmann_json')
 queue_dep = dependency('concurrentqueue')
 
 # Add an include dir so that we can use ImagerPluginCore/ syntax to access its headers
@@ -33,7 +32,7 @@ shared_library(plugin_name,
   
   include_directories : [core_inc, './include'],
   #link_with : [core_lib],
-  dependencies : [json_dep, queue_dep, imager_core_dep],
+  dependencies : [queue_dep, imager_core_dep],
   name_suffix : 'imagerplugin', # Change the output file extension
   cpp_args : ['-DNOMINMAX'],
 )
