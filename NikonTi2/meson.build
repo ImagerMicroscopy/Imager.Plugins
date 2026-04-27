@@ -13,6 +13,12 @@ if host_machine.cpu_family() != 'x86_64'
   error('This plugin must be built for 64-bit architecture. Please configure your build system for x64.')
 endif
 
+# Ensure the equipment name macro is available to all subprojects (especially ImagerPluginCore)
+add_global_arguments('-DIMAGER_EQUIPMENT_NAME="' + plugin_name + '"', language : 'cpp')
+
+# Fetch the core Imager plugin support files
+imager_core_dep = dependency('imagerplugincore')
+
 # Fetch dependencies
 json_dep = dependency('nlohmann_json')
 queue_dep = dependency('concurrentqueue')
@@ -25,24 +31,12 @@ sdk_lib = cc.find_library('Ti2_Mic_Driver', dirs : meson.current_source_dir() / 
 
 # Define the shared library (DLL) target for the plugin
 shared_library(plugin_name,
-  # Source files for the plugin implementation
-  # It should not be necessary to edit or modify these
-  'ImagerPluginCore/BaseCameraClass.cpp',
-  'ImagerPluginCore/CameraUtils.cpp',
-  'ImagerPluginCore/ImageProcessingUtils.cpp',
-  'ImagerPluginCore/ImagerPlugin.cpp',
-  'ImagerPluginCore/CameraPropertiesEncoding.cpp',
-  'ImagerPluginCore/PluginManager.cpp',
-  'ImagerPluginCore/RobotProgramArguments.cpp',
-  'ImagerPluginCore/StandardCameraProperties.cpp',
-  
-  # Add your plugin source files here
   'src/NikonTi2Plugin.cpp',
   'src/NikonTi2.cpp',
   
   include_directories : [core_inc, './include'],
   #link_with : [core_lib],
-  dependencies : [json_dep, queue_dep, sdk_lib],
+  dependencies : [json_dep, queue_dep, sdk_lib, imager_core_dep],
   name_suffix : 'imagerplugin', # Change the output file extension
-  cpp_args : ['-DNOMINMAX', '-DIMAGER_EQUIPMENT_NAME="' + plugin_name + '"'],
+  cpp_args : ['-DNOMINMAX'],
   )

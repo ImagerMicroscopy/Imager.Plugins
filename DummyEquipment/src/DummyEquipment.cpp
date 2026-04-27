@@ -2,7 +2,7 @@
 
 #include <format>
 
-#include "PluginManager.h"
+#include "ImagerPluginCore/PluginManager.h"
 
 // --- DummyLightSource ---
 
@@ -119,6 +119,13 @@ void DummyRobot::executeProgram(const RobotProgramExecutionParams& programParams
     PluginManager::Manager().Print(std::format("DummyRobot executing program: {}\n", programParams.programName()));
     for (const auto& [argName, argValue] : programParams.arguments()) { 
         std::visit([&](const auto& value) {
+            if (std::holds_alternative<RobotProgramExecutionDiscreteArgument>(argValue)) {
+                const auto& discreteArg = std::get<RobotProgramExecutionDiscreteArgument>(argValue);
+                PluginManager::Manager().Print(std::format("Discrete argument: {} = {}\n", discreteArg.argumentName(), discreteArg.value()));
+            } else if (std::holds_alternative<RobotProgramExecutionContinuousArgument>(argValue)) {
+                const auto& continuousArg = std::get<RobotProgramExecutionContinuousArgument>(argValue);
+                PluginManager::Manager().Print(std::format("Continuous argument: {} = {}\n", continuousArg.argumentName(), continuousArg.value()));
+            }
             PluginManager::Manager().Print(std::format("Argument: {} = {}\n", argName, value.value()));
         }, argValue);
     }

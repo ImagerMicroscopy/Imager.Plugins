@@ -1,9 +1,10 @@
 #pragma once
 
-#include "DeviceTemplates.h"
 #include <string>
 #include <vector>
 #include <utility>
+
+#include "ImagerPluginCore/DeviceTemplates.h"
 
 class DummyLightSource : public LightSource {
 public:

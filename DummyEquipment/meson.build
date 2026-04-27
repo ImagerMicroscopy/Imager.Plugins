@@ -13,31 +13,23 @@ if host_machine.cpu_family() != 'x86_64'
   error('This plugin must be built for 64-bit architecture. Please configure your build system for x64.')
 endif
 
+# Ensure the equipment name macro is available to all subprojects (especially ImagerPluginCore)
+add_global_arguments('-DIMAGER_EQUIPMENT_NAME="' + plugin_name + '"', language : 'cpp')
+
+# Fetch the core Imager plugin support files
+imager_core_dep = dependency('imagerplugincore')
+
 # Fetch nlohmann_json dependency 
 # (Automatically resolved by subprojects/nlohmann_json.wrap)
 json_dep = dependency('nlohmann_json')
 
-# Core sources that provide common plugin functionality (shared across all plugins)
-# These should not be modified by plugin developers
-#subdir('ImagerPluginCore')
-core_inc = include_directories('ImagerPluginCore')
-
 # Define the shared library (DLL) target for the plugin
 shared_library(plugin_name,
-  # Source files for the plugin implementation
-  # It should not be necessary to edit or modify these
-  'ImagerPluginCore/ImagerPlugin.cpp',
-  'ImagerPluginCore/CameraPropertiesEncoding.cpp',
-  'ImagerPluginCore/PluginManager.cpp',
-  'ImagerPluginCore/RobotProgramArguments.cpp',
-  
-  # Add your plugin source files here
   'src/DummyEquipmentPlugin.cpp',
   'src/DummyEquipment.cpp',
   
-  include_directories : core_inc,
-  #link_with : [core_lib],
-  dependencies : [json_dep],
+  include_directories : [],
+  dependencies : [json_dep, imager_core_dep],
   name_suffix : 'imagerplugin', # Change the output file extension
-  cpp_args : ['-DNOMINMAX', '-DIMAGER_EQUIPMENT_NAME="' + plugin_name + '"'],
+  cpp_args : ['-DNOMINMAX'],
 )

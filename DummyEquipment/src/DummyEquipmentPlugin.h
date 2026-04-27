@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-#include "DeviceTemplates.h"
+#include "ImagerPluginCore/DeviceTemplates.h"
 
 void InitPlugin();
 

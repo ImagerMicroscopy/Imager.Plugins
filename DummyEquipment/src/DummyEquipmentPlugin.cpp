@@ -1,7 +1,8 @@
 #include "DummyEquipmentPlugin.h"
 
+#include "ImagerPluginCore/PluginManager.h"
+
 #include "DummyEquipment.h"
-#include "PluginManager.h"
 
 void InitPlugin() {
     // Imager is starting up. Create all objects and perform all work
