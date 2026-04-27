@@ -50,8 +50,35 @@ void VisiTIRFConnectionHandler::sendString(const std::string &message)
     WriteFile(hSerial, message.c_str(), static_cast<DWORD>(message.size()), &bytesWritten, NULL);
 }
 
-void VisiTIRFConnectionHandler::startConnection()
-{
+std::vector<std::shared_ptr<ContinuouslyMovableComponent>> VisiTIRFConnectionHandler::getContinuouslyMovableComponents() {
+    std::vector<std::shared_ptr<ContinuouslyMovableComponent>> components;
+
+    for (const auto& setting : {"X amplitude", "Y amplitude", "X offset", "Y offset", "phi"}) {
+        components.push_back(std::make_shared<ContinuouslyMovableComponentFunctor>(
+            setting,
+            -5.0,   // min value
+             5.0, // max value
+             0.001,   // increment
+            [this, setting](double value) {
+                setSetting(setting, value);
+            }
+        ));
+    }
+
+    components.push_back(std::make_shared<ContinuouslyMovableComponentFunctor>(
+        "exposure",
+        0.0,   // min value
+        10, // max value
+        0.001,   // increment
+        [this](double value) {
+            setSetting("exposure", value);
+        }
+    ));
+
+    return components;
+}
+
+void VisiTIRFConnectionHandler::startConnection() {
     if (connectedPort.empty())
         return;
 

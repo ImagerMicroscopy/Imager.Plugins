@@ -5,17 +5,25 @@
 #include <string>
 #include <Windows.h>
 
+#include "ImagerPluginCore/DeviceTemplates.h"
+
 class VisiTIRFConnectionHandler {
 public:
     VisiTIRFConnectionHandler();
     ~VisiTIRFConnectionHandler();
 
+    VisiTIRFConnectionHandler(const VisiTIRFConnectionHandler&) = delete;
+    VisiTIRFConnectionHandler& operator=(const VisiTIRFConnectionHandler&) = delete;
+
+    std::vector<std::shared_ptr<ContinuouslyMovableComponent>> getContinuouslyMovableComponents();
+
     void startConnection();
     void closeConnection();
+
+private:
     void setSetting(std::string setting,double value);
     void sendSettings();
 
-private:
     void sendString(const std::string& str);
     std::vector<std::string> listCOMPorts();
     bool probePort(const std::string& port);
