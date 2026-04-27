@@ -20,6 +20,7 @@ RTC::RTC() :
     _haveInit(false)
 {}
 
+
 void RTC::init() {
     if (_haveInit) {
         throw std::logic_error("RTC::init() but already done");
@@ -40,6 +41,42 @@ void RTC::init() {
     }
 
     _haveInit = true;
+}
+
+std::vector<std::shared_ptr<LightSource>> RTC::getLightSources() {
+    std::vector<std::shared_ptr<LightSource>> lightSources;
+    lightSources.push_back(std::make_shared<LightSourceFunctor>(
+        "RTC",
+        listAvailableLasers(),
+        true,
+        true,
+        [this](const std::vector<LightSource::ChannelSetting>& channelSettings) {
+            for (const auto& setting : channelSettings) {
+                activateLaser(setting.first, setting.second);
+            }
+        },
+        [this]() {
+            deactivateLasers();
+        }
+    ));
+    return lightSources;
+}
+
+std::vector<std::shared_ptr<ContinuouslyMovableComponent>> RTC::getContinuouslyMovableComponents() {
+    std::vector<std::shared_ptr<ContinuouslyMovableComponent>> components;
+    for (const auto& motorName : listAvailableMotors()) {
+        auto [minVal, maxVal] = getMotorParams(motorName);
+        components.push_back(std::make_shared<ContinuouslyMovableComponentFunctor>(
+            motorName,
+            minVal,
+            maxVal,
+            1.0,
+            [this, motorName](double setting) {
+                moveMotor(motorName, setting);
+            }
+        ));
+    }
+    return components;
 }
 
 std::vector<std::string> RTC::listAvailableLasers() const {

@@ -4,6 +4,7 @@
 #include <map>
 #include <string>
 
+#include "ImagerPluginCore/DeviceTemplates.h"
 #include "pugixml.hpp"
 
 #include "RTCConnectionHandler.h"
@@ -14,8 +15,15 @@ public:
     RTC();
     ~RTC() {;}
 
+    RTC(const RTC&) = delete;
+    RTC& operator=(const RTC&) = delete;
+
     void init();
 
+    std::vector<std::shared_ptr<LightSource>> getLightSources();
+    std::vector<std::shared_ptr<ContinuouslyMovableComponent>> getContinuouslyMovableComponents();
+
+private:
     [[nodiscard]] std::vector<std::string> listAvailableLasers() const;
     [[nodiscard]] std::vector<std::string> listAvailableMotors() const;
 
@@ -24,7 +32,6 @@ public:
     void moveMotor(const std::string& motorIdentifier, double settingPercent);
     std::tuple<int,int> getMotorParams(const std::string& motorIdentifier);
 
-private:
     std::vector<Laser> _fetchLasers();
     static std::string _generateLaserIdentifier(const Laser& laser);
     std::vector<Motor> _fetchMotors();
