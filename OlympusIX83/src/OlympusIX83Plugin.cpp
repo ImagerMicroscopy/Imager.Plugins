@@ -6,7 +6,7 @@
 
 #include "OlympusIX83.h"
 
-void InitPlugin([[maybe_unused]] const std::filesystem::path& configDirPath) {
+void InitPlugin() {
     static std::unique_ptr<OlympusIX83> microscope = std::make_unique<OlympusIX83>();
 
     PluginManager& pluginManager = PluginManager::Manager();

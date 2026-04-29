@@ -19,6 +19,7 @@ add_global_arguments('-DIMAGER_EQUIPMENT_NAME="' + plugin_name + '"', language :
 # Fetch the core Imager plugin support files
 imager_core_dep = dependency('imagerplugincore')
 
+# Compile the plugin API directly into this plugin
 imager_core_sp = subproject('imagerplugincore')
 imager_api_source = imager_core_sp.get_variable('api_source')
 

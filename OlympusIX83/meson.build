@@ -19,6 +19,10 @@ add_global_arguments('-DIMAGER_EQUIPMENT_NAME="' + plugin_name + '"', language :
 # Fetch the core Imager plugin support files
 imager_core_dep = dependency('imagerplugincore')
 
+# Compile the plugin API directly into this plugin
+imager_core_sp = subproject('imagerplugincore')
+imager_api_source = imager_core_sp.get_variable('api_source')
+
 # Fetch dependencies
 queue_dep = dependency('concurrentqueue')
 
@@ -29,6 +33,8 @@ core_inc = include_directories('.')
 shared_library(plugin_name,
   'src/OlympusIX83.cpp',
   'src/OlympusIX83Plugin.cpp',
+
+  imager_api_source,
   
   include_directories : [core_inc, './include'],
   #link_with : [core_lib],

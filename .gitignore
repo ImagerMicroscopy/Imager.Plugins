@@ -1,0 +1,64 @@
+# Repository .gitignore for Imager.Plugins
+
+# Meson / build directories
+builddir/
+*/builddir/
+build-*/
+*/build-*/
+
+# Ignore vendor/unpacked subprojects contents (top-level and one level deep), but keep .wrap files
+subprojects/**
+*/subprojects/**
+!subprojects/*.wrap
+!*/subprojects/*.wrap
+!subprojects/
+!*/subprojects/
+
+# IDE/editor
+.vscode/
+*.code-workspace
+
+# Visual Studio
+*.sln
+*.vcxproj*
+*.suo
+*.user
+*.VC.db
+
+# Compiled object files and libraries
+*.o
+*.obj
+*.lib
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+
+# Debug files
+*.pdb
+*.ilk
+
+# CMake
+CMakeFiles/
+*/CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+
+# Ninja
+*.ninja
+
+# Python
+__pycache__/
+*.pyc
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary
+*~
+*.swp
+
+# Logs
+*.log

@@ -3,7 +3,7 @@
 
 #include <filesystem>
 
-void InitPlugin(const std::filesystem::path& configDirPath);
+void InitPlugin();
 void ShutdownPlugin();
 
 #endif // NIKONTI2PLUGIN_H

@@ -4,7 +4,7 @@
 
 #include "DummyCamera.h"
 
-void InitPlugin([[maybe_unused]] const std::filesystem::path& configDirPath) {
+void InitPlugin() {
     // Imager is starting up. Create all objects and perform all work
     // needed to start operation.
 

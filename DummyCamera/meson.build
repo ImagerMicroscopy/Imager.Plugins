@@ -19,6 +19,10 @@ add_global_arguments('-DIMAGER_EQUIPMENT_NAME="' + plugin_name + '"', language :
 # Fetch the core Imager plugin support files
 imager_core_dep = dependency('imagerplugincore')
 
+# Compile the plugin API directly into this plugin
+imager_core_sp = subproject('imagerplugincore')
+imager_api_source = imager_core_sp.get_variable('api_source')
+
 # Add an include dir so that we can use ImagerPluginCore/ syntax to access its headers
 core_inc = include_directories('.')
 
@@ -27,6 +31,8 @@ shared_library(plugin_name,
   # Add your plugin source files here
   'src/DummyCamera.cpp',
   'src/DummyCameraPlugin.cpp',
+  
+  imager_api_source,
   
   include_directories : core_inc,
   #link_with : [core_lib],

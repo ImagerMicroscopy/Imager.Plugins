@@ -6,7 +6,7 @@
 
 #include "NikonTi2.h"
 
-void InitPlugin([[maybe_unused]] const std::filesystem::path& configDirPath) {
+void InitPlugin() {
     static std::unique_ptr<NikonTi2> microscope = std::make_unique<NikonTi2>();
 
     PluginManager& pluginManager = PluginManager::Manager();

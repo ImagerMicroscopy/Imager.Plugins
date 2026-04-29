@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-void InitPlugin(const std::filesystem::path& configDirPath);
+void InitPlugin();
 
 void ShutdownPlugin();
 
