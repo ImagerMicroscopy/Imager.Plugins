@@ -1,0 +1,7 @@
+[wrap-git]
+url = https://github.com/ImagerMicroscopy/Imager.PluginCore.git
+revision = b0707601ba71dc92c85488d3422bd2154aa2b460
+depth = 1
+
+[provide]
+dependency_names = imagerplugincore
