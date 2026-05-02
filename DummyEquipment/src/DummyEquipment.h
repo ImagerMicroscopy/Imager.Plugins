@@ -61,6 +61,8 @@ public:
 
     Position getPosition() override;
     void setPosition(Position position) override;
+    bool isMoving() override {return false;}
+    void stopMoving() override {;}
 
 private:
     double _x{0.0};

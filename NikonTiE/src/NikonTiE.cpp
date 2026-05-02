@@ -71,7 +71,9 @@ std::vector<std::shared_ptr<MotorizedStage>> NikonTiE::getMotorizedStages() {
 			"Stage",
 			supportsX, supportsY, supportsZ,
 			[this]() { return getStagePosition(); },
-			[this](MotorizedStage::Position pos) { setStagePosition(pos); }
+			[this](MotorizedStage::Position pos) { setStagePosition(pos); },
+			[this]() { return false; },
+            [this]() {}
 		));
 	}
 

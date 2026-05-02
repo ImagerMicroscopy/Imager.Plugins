@@ -56,7 +56,9 @@ std::vector<std::shared_ptr<MotorizedStage>> NikonTi2::getMotorizedStages() {
         stages.push_back(std::make_shared<MotorizedStageFunctor>(
             "Nikon Ti2 Stage", x, y, z,
             [this]() { return getStagePosition(); },
-            [this](MotorizedStage::Position pos) { setStagePosition(pos); }
+            [this](MotorizedStage::Position pos) { setStagePosition(pos); },
+            [this]() { return false; },
+            [this]() {}
         ));
     }
     return stages;

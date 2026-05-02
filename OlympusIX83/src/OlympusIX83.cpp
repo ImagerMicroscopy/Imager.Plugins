@@ -188,7 +188,9 @@ std::vector<std::shared_ptr<MotorizedStage>> OlympusIX83::getMotorizedStages() {
             false,  // supportsY
             true,   // supportsZ
             [this]() { return getStagePosition(); },
-            [this](const StagePosition& pos) { setStagePosition(pos); }
+            [this](const StagePosition& pos) { setStagePosition(pos); },
+            [this]() { return false; },
+            [this]() {}
         ));
     }
     return stages;

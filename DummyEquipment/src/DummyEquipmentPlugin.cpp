@@ -13,6 +13,7 @@ void InitPlugin() {
     manager.addLightSource(std::make_shared<DummyLightSource>());
     manager.addDiscreteMovableComponent(std::make_shared<DummyFilterWheel>());
     manager.addContinuouslyMovableComponent(std::make_shared<DummyPolarizer>());
+    manager.addMotorizedStage(std::make_shared<DummyMotorizedStage>());
     manager.addRobot(std::make_shared<DummyRobot>());
 }
 
