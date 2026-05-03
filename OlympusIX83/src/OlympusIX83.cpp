@@ -73,7 +73,7 @@ OlympusIX83::OlympusIX83() :
     std::filesystem::path exePath(path);
     std::filesystem::path pathToOlympusDLL = exePath.remove_filename() / GT_MDK_PORT_MANAGER;
     
-    _sdkModule = LoadLibrary(pathToOlympusDLL.c_str());
+    _sdkModule = LoadLibraryW(pathToOlympusDLL.c_str());
     if (_sdkModule == nullptr) {
         throw std::runtime_error("could not load Olympus library");
     }
@@ -236,7 +236,7 @@ std::filesystem::path OlympusIX83::_getPathToThisDLL() {
     WCHAR path[MAX_PATH];
     HMODULE hm = NULL;
 
-    if (GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | 
+    if (GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | 
             GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
             (LPCWSTR) &CommandCallback, &hm) == 0) {
         int ret = GetLastError();
