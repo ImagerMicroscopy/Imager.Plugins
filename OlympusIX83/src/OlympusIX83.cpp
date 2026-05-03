@@ -1,8 +1,10 @@
 #include "OlympusIX83.h"
 
 #include <algorithm>
+#include <format>
 #include <iostream>
 #include <iterator>
+#include <sstream>
 #include <stdexcept>
 #include <thread>
 
@@ -70,9 +72,8 @@ OlympusIX83::OlympusIX83() :
     GetModuleFileNameW(NULL, path, MAX_PATH);
     std::filesystem::path exePath(path);
     std::filesystem::path pathToOlympusDLL = exePath.remove_filename() / GT_MDK_PORT_MANAGER;
-    std::string thePath = pathToOlympusDLL.string();
-
-    _sdkModule = LoadLibrary(thePath.c_str());
+    
+    _sdkModule = LoadLibrary(pathToOlympusDLL.c_str());
     if (_sdkModule == nullptr) {
         throw std::runtime_error("could not load Olympus library");
     }
@@ -232,16 +233,16 @@ void OlympusIX83::setStagePosition(const StagePosition &pos) {
 }
 
 std::filesystem::path OlympusIX83::_getPathToThisDLL() {
-    char path[MAX_PATH];
+    WCHAR path[MAX_PATH];
     HMODULE hm = NULL;
 
     if (GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | 
             GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-            (LPCSTR) &CommandCallback, &hm) == 0) {
+            (LPCWSTR) &CommandCallback, &hm) == 0) {
         int ret = GetLastError();
         throw std::runtime_error("GetModuleHandle failed to get the plugin path");
     }
-    if (GetModuleFileName(hm, path, sizeof(path)) == 0) {
+    if (GetModuleFileNameW(hm, path, MAX_PATH) == 0) {
         int ret = GetLastError();
         throw std::runtime_error("GetModuleFileName failed to get the plugin path");
     }
