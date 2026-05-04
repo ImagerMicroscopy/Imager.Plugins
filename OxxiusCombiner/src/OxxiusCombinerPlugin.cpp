@@ -42,11 +42,15 @@ void InitPlugin() {
         ConfigPath turnOffPath = ConfigPath(combinerKey) / "TurnOffLCXOnStartupAndEnd";
         auto turnOffResponse = configManager.getSettingOrDefault(turnOffPath, "False");
         bool turnOffLCX = parseBool(turnOffResponse.first);
+
+        auto commResponse = configManager.getSettingOrDefault(combinerKey / "PrintCommunication", "False");
+        bool printCommunication = parseBool(commResponse.first);
         
         std::string name = std::format("Oxxius Combiner {}", index);
         
         try {
             auto combiner = std::make_shared<OxxiusCombiner>(name, portResponse.first, modulationMode, turnOffLCX);
+            combiner->setPrintCommunication(printCommunication);
             PluginManager::Manager().addLightSource(combiner);
             PluginManager::Manager().Print(std::format("Initialized {} on port {}", name, portResponse.first));
         } catch (const std::exception& e) {

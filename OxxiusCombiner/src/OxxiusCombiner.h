@@ -25,6 +25,8 @@ public:
     void activate(const std::vector<ChannelSetting>& channelSettings) override;
     void deactivate() override;
 
+    void setPrintCommunication(bool print) { _serialPort.setPrintCommunication(print); }
+
 private:
     enum class LaserType { LBX, LCX };
     enum class RegulationMode { ConstantPower, ConstantCurrent };
