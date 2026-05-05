@@ -46,17 +46,20 @@ std::pair<int, int> SimpleCamera::_getSensorSize() const {
 }
 
 AcquiredImage SimpleCamera::_generateNewImage() {
-    auto start = std::chrono::steady_clock::now();
+    auto endTime = std::chrono::steady_clock::now() + std::chrono::duration<double>(_exposureTime);
 
     std::pair<int, int> imageDimensions = _getSensorSize();
     AcquiredImage image = NewRecycledImage(AcquiredImage::PixelFormat::Mono16, imageDimensions.first, imageDimensions.second);
     std::uint16_t* dataPtr = reinterpret_cast<std::uint16_t*>(image.getData().get());
     _fillImage(dataPtr, imageDimensions.first * imageDimensions.second);
 
-    auto end = std::chrono::steady_clock::now();
-    std::chrono::duration<double> elapsed = end - start;
-    if (elapsed.count() < _exposureTime) {
-        std::this_thread::sleep_for(std::chrono::duration<double>(_exposureTime - elapsed.count()));
+    for ( ; ; ) {
+        auto now = std::chrono::steady_clock::now();
+        auto remaining = endTime - now;
+        if (now >= endTime) {
+            break;
+        }
+        std::this_thread::sleep_for(std::min(remaining, std::chrono::duration_cast<decltype(remaining)>(std::chrono::milliseconds(10))));
     }
 
     return image;
