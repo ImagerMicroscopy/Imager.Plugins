@@ -37,6 +37,7 @@ shared_library(plugin_name,
   include_directories : core_inc,
   #link_with : [core_lib],
   dependencies : [imager_core_dep],
+  name_prefix : '',
   name_suffix : 'imagerplugin', # Change the output file extension
   cpp_args : ['-DNOMINMAX'],
   )
