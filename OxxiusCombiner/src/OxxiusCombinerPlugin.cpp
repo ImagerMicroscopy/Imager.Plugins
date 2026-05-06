@@ -50,7 +50,8 @@ void InitPlugin() {
         
         try {
             auto combiner = std::make_shared<OxxiusCombiner>(name, portResponse.first, modulationMode, turnOffLCX);
-            combiner->setPrintCommunication(printCommunication);
+            combiner->setPrintCommunication(true);
+            combiner->initialize();
             PluginManager::Manager().addLightSource(combiner);
             PluginManager::Manager().Print(std::format("Initialized {} on port {}", name, portResponse.first));
         } catch (const std::exception& e) {

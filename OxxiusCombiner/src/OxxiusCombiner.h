@@ -17,6 +17,8 @@ public:
     OxxiusCombiner(const OxxiusCombiner&) = delete;
     OxxiusCombiner& operator=(const OxxiusCombiner&) = delete;
 
+    void initialize();
+
     std::string getName() const override { return _name; }
     std::vector<std::string> getChannels() const override { return _channelNames; }
     bool canControlPower() const override { return true; }
@@ -43,8 +45,8 @@ private:
     void _initialize();
     LaserParams _parseLaserInfo(int index, const std::string& info);
     std::string _sendCommand(const std::string& cmd);
-    std::string _sendCommandAndCheckOK(const std::string& cmd);
-    void _sendLaserCommand(int index, const std::string& cmd);
+    std::string _sendCommandAndCheckResponse(const std::string& cmd);
+    void _sendLaserCommand(int index, const std::string& cmd, bool ignoreResponse = false);
     void _setAOMMode();
     void _initLaser(int index, const LaserParams& params);
     std::string _queryLaserInfo(int index);
@@ -54,6 +56,9 @@ private:
     SerialPort _serialPort;
     ModulationMode _modulationMode{ModulationMode::NoModulation};
     bool _turnOffLCXOnStartupAndEnd{false};
+    std::string _portName;
+    int _baudRate;
+    int _timeoutMillis;
     std::vector<LaserParams> _lasers;
     std::vector<std::string> _channelNames;
     bool _isInitialized{false};
