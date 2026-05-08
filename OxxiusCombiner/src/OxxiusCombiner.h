@@ -11,7 +11,7 @@ class OxxiusCombiner : public LightSource {
 public:
     enum class ModulationMode { NoModulation, DigitalModulation, AnalogModulation };
 
-    OxxiusCombiner(const std::string& name, const std::string& portName, ModulationMode modulationMode, bool turnOffLCXOnStartupAndEnd, uint32_t baudRate = 19200, uint32_t timeoutMillis = 1000);
+    OxxiusCombiner(const std::string& name, const std::string& portName, ModulationMode modulationMode, bool turnOffLCXOnStartupAndEnd, uint32_t baudRate = 19200, uint32_t timeoutMillis = 10000);
     ~OxxiusCombiner() override;
 
     OxxiusCombiner(const OxxiusCombiner&) = delete;
@@ -46,7 +46,7 @@ private:
     LaserParams _parseLaserInfo(int index, const std::string& info);
     std::string _sendCommand(const std::string& cmd);
     std::string _sendCommandAndCheckResponse(const std::string& cmd);
-    void _sendLaserCommand(int index, const std::string& cmd, bool ignoreResponse = false);
+    void _sendLaserCommand(int index, const std::string& cmd, bool ignoreResponse = false, bool haslaserprefix = true);
     void _setAOMMode();
     void _initLaser(int index, const LaserParams& params);
     std::string _queryLaserInfo(int index);

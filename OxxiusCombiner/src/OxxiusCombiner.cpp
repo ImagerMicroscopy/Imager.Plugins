@@ -6,6 +6,8 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <thread>
+#include <chrono>
 
 #include "ImagerPluginCore/PluginManager.h"
 
@@ -101,8 +103,13 @@ std::string OxxiusCombiner::_sendCommandAndCheckResponse(const std::string& cmd)
     return response;
 }
 
-void OxxiusCombiner::_sendLaserCommand(int index, const std::string& cmd, bool ignoreResponse) {
+void OxxiusCombiner::_sendLaserCommand(int index, const std::string& cmd, bool ignoreResponse, bool haslaserprefix) {
     std::string fullCmd = std::format("L{} {}\n", index, cmd);
+
+    if (!haslaserprefix)
+    {
+        fullCmd = std::format("{}\n", cmd);
+    }
     std::string response = _serialPort.writeAndReadUntilString(fullCmd, "\n");
     // Laser commands echo back the command or return OK. Unless they reply inconsistently for some commands.
     if (!ignoreResponse) {
@@ -167,10 +174,14 @@ void OxxiusCombiner::_initLaser(int index, const LaserParams& params) {
     }
 }
 
+
+
 std::string OxxiusCombiner::_queryLaserInfo(int index) {
     std::string cmd = std::format("L{} INF?\n", index);
-    std::string response = _serialPort.writeAndReadUntilString(cmd, "\n");
+
     
+    std::string response = _serialPort.writeAndReadUntilStringWithPolling(cmd, "\n");
+
     // Check for error responses
     if (response.find("timeout") != std::string::npos || 
         response.find("Not authorized") != std::string::npos) {
@@ -185,21 +196,42 @@ std::string OxxiusCombiner::_queryLaserInfo(int index) {
 }
 
 void OxxiusCombiner::_setLaserPower(int index, LaserType type, RegulationMode mode, double percentage) {
-    double actualPower = (percentage / 100.0);
+    //double actualPower = (percentage / 100.0);
     
     // Format power as "X.YY" with one decimal digit
-    int whole = static_cast<int>(actualPower);
-    int fractional = static_cast<int>(std::round((actualPower - whole) * 10));
+    int whole = static_cast<int>(percentage);
+    int fractional = static_cast<int>(std::round(percentage - whole)*100);
     
     std::string powerStr = std::format("{}.{}", whole, fractional);
     
     switch (type) {
-        case LaserType::LBX:
-            _sendLaserCommand(index, std::format("PPL{} {}", index, powerStr));
+    case LaserType::LCX:
+        _sendLaserCommand(
+            index,
+            std::format("PPL{} {}", index, powerStr, true, false),
+            true,
+            false);
+        break;
+
+    case LaserType::LBX:
+        switch (mode) {
+        case RegulationMode::ConstantPower:
+            _sendLaserCommand(
+                index,
+                std::format("PPL{} {}", index, powerStr, true, false),
+                true,
+                false);
             break;
-        case LaserType::LCX:
-            _sendCommandAndCheckResponse(std::format("P={}", powerStr));
+
+        case RegulationMode::ConstantCurrent:
+            _sendLaserCommand(
+                index,
+                std::format("L{} CM {}", index, powerStr, true, false),
+                true,
+                false);
             break;
+        }
+        break;
     }
 }
 
@@ -215,17 +247,19 @@ void OxxiusCombiner::activate(const std::vector<ChannelSetting>& channelSettings
             switch (params.type) {
                 case LaserType::LCX:
                     // Enable temperature regulation in case we turned it off on startup
+                    _setLaserPower(params.index, params.type, params.regulationMode, power);
                     _sendLaserCommand(params.index, "T=1", true);
                     _sendLaserCommand(params.index, "DL=1");
                     break;
                 case LaserType::LBX:
                     _sendLaserCommand(params.index, "L=1");
                     _sendLaserCommand(params.index, "DL=1");
+                    _setLaserPower(params.index, params.type, params.regulationMode, power);
+
                     break;
             }
             
             // Set power
-            _setLaserPower(params.index, params.type, params.regulationMode, power);
         }
     }
 }
@@ -234,11 +268,15 @@ void OxxiusCombiner::deactivate() {
     for (const auto& params : _lasers) {
         switch (params.type) {
             case LaserType::LCX:
-                _sendLaserCommand(params.index, std::format("PPL{} 0.0", params.index));
+                _sendLaserCommand(
+                    params.index,
+                    std::format("PPL{} 0.0", params.index), true, false);
+    
                 break;
             case LaserType::LBX:
-                _sendLaserCommand(params.index, "L=0");
-                _sendLaserCommand(params.index, "DL=0");
+                _sendLaserCommand(params.index, std::format("L{} L=0", params.index), true , false);
+                _sendLaserCommand(params.index, std::format("L{} DL=0", params.index), true, false);
+
                 break;
         }
     }
