@@ -9,7 +9,7 @@
 
 class PriorProScanIII : public MotorizedStage {
 public:
-    PriorProScanIII(const std::string& portName, uint32_t baudRate = 9600, uint32_t timeoutMillis = 30000);
+    PriorProScanIII(const std::string& portName, bool printCommunication, uint32_t baudRate = 9600, uint32_t timeoutMillis = 30000);
     ~PriorProScanIII() override;
 
     PriorProScanIII(const PriorProScanIII&) = delete;
@@ -24,6 +24,8 @@ public:
     void setPosition(MotorizedStage::Position position) override;
     bool isMoving() override;
     void stopMoving() override;
+
+    void setPrintCommunication(bool print) {_serialPort.setPrintCommunication(print);}
 
 private:
     void initialize();

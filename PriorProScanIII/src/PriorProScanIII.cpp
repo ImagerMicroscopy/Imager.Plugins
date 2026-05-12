@@ -7,11 +7,11 @@
 
 #include "ImagerPluginCore/PluginManager.h"
 
-PriorProScanIII::PriorProScanIII(const std::string& portName, uint32_t baudRate, uint32_t timeoutMillis)
+PriorProScanIII::PriorProScanIII(const std::string& portName, bool printCommunication, uint32_t baudRate, uint32_t timeoutMillis)
     : _name("Prior ProScan III") {
+    _serialPort.setPrintCommunication(printCommunication);
     _serialPort.open(portName, baudRate, timeoutMillis);
     initialize();
-    _isInitialized = true;
 }
 
 PriorProScanIII::~PriorProScanIII() {
@@ -29,12 +29,14 @@ void PriorProScanIII::initialize() {
     handlePriorSettingChange("JZD -1");
     
     determineAvailableAxes();
+
+    _isInitialized = true;
 }
 
 void PriorProScanIII::determineAvailableAxes() {
-    std::string response = sendCommand("?");
+    std::string response = _serialPort.writeAndReadUntilString("?\r", "END\r");
     // Check if Z axis is available (FOCUS = NONE means no Z axis)
-    if (response.find("FOCUS = NONE") != std::string::npos) {
+    if (response.find("\rFOCUS = NONE") != std::string::npos) {
         _supportsZ = false;
     } else {
         _supportsZ = true;
