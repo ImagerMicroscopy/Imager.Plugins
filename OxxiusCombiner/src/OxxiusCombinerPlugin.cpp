@@ -17,45 +17,36 @@ OxxiusCombiner::ModulationMode parseModulationMode(const std::string& modeStr) {
     throw std::runtime_error(std::format("Invalid ModulationMode '{}'. Allowed values: NoModulation, DigitalModulation, AnalogModulation", modeStr));
 }
 
-bool parseBool(const std::string& value) {
-    if (value == "True") return true;
-    if (value == "False") return false;
-    throw std::runtime_error(std::format("Invalid boolean value '{}'. Allowed values: True, False", value));
-}
-
 void InitPlugin() {
     ConfigManager& configManager = PluginManager::Manager().getConfigManager();
     
     for (int index = 1; index <= MAX_OXXIUS_COMBINERS; ++index) {
         std::string combinerKey = std::format("OxxiusCombiner_{}", index);
-        ConfigPath portPath = ConfigPath(combinerKey) / "Port";
-        auto portResponse = configManager.getSettingOrDefault(portPath, "");
+        auto portResponse = configManager.getStringSettingOrDefault(combinerKey / "Port", "");
         
-        if (portResponse.first.empty()) {
+        if (portResponse.value.empty()) {
             continue; // No combiner configured at this index
         }
         
-        ConfigPath modePath = ConfigPath(combinerKey) / "ModulationMode";
-        auto modeResponse = configManager.getSettingOrDefault(modePath, "NoModulation");
-        OxxiusCombiner::ModulationMode modulationMode = parseModulationMode(modeResponse.first);
+        auto modeResponse = configManager.getStringSettingOrDefault(combinerKey / "ModulationMode", "NoModulation");
+        OxxiusCombiner::ModulationMode modulationMode = parseModulationMode(modeResponse.value);
         
-        ConfigPath turnOffPath = ConfigPath(combinerKey) / "TurnOffLCXOnStartupAndEnd";
-        auto turnOffResponse = configManager.getSettingOrDefault(turnOffPath, "False");
-        bool turnOffLCX = parseBool(turnOffResponse.first);
+        auto turnOffResponse = configManager.getBoolSettingOrDefault(combinerKey / "TurnOffLCXOnStartupAndEnd", false);
+        bool turnOffLCX = turnOffResponse.value;
 
-        auto commResponse = configManager.getSettingOrDefault(combinerKey / "PrintCommunication", "False");
-        bool printCommunication = parseBool(commResponse.first);
+        auto commResponse = configManager.getBoolSettingOrDefault(combinerKey / "PrintCommunication", false);
+        bool printCommunication = commResponse.value;
         
         std::string name = std::format("Oxxius Combiner {}", index);
         
         try {
-            auto combiner = std::make_shared<OxxiusCombiner>(name, portResponse.first, modulationMode, turnOffLCX);
+            auto combiner = std::make_shared<OxxiusCombiner>(name, portResponse.value, modulationMode, turnOffLCX);
             combiner->setPrintCommunication(true);
             combiner->initialize();
             PluginManager::Manager().addLightSource(combiner);
-            PluginManager::Manager().Print(std::format("Initialized {} on port {}", name, portResponse.first));
+            PluginManager::Manager().Print(std::format("Initialized {} on port {}", name, portResponse.value));
         } catch (const std::exception& e) {
-            PluginManager::Manager().Print(std::format("Failed to initialize {} on port {}: {}", name, portResponse.first, e.what()));
+            PluginManager::Manager().Print(std::format("Failed to initialize {} on port {}: {}", name, portResponse.value, e.what()));
         }
     }
 }

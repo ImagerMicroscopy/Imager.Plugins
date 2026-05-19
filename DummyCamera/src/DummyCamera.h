@@ -4,8 +4,15 @@
 #include <format>
 #include <thread>
 #include <memory>
+#include <random>
+#include <vector>
+#include <mutex>
 
 #include "ImagerPluginCore/BaseCameraClass.h"
+
+struct Star {
+    double x, y, z, pz;
+};
 
 class SimpleCamera : public BaseCameraClass {
 public:
@@ -33,6 +40,15 @@ private:
 
     std::string _cameraIdentifierStr;
     static inline int _camCounter = 0;
+
+    std::mt19937 _prng;
+    std::uniform_real_distribution<double> _randDistX{-1.0, 1.0};
+    std::uniform_real_distribution<double> _randDistY{-1.0, 1.0};
+    std::uniform_real_distribution<double> _randDistZ{0.1, 1000.0};
+    std::vector<Star> _stars;
+    std::mutex _mutex;
+    
+    void _initializeStars();
 };
 
 #endif
