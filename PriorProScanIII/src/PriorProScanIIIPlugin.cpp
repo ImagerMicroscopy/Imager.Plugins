@@ -4,6 +4,8 @@
 
 #include "PriorProScanIII.h"
 
+static std::vector<std::shared_ptr<PriorProScanIII>> sStages;
+
 void InitPlugin() {
     // Imager is starting up. Create all objects and perform all work
     // needed to start operation.
@@ -22,9 +24,12 @@ void InitPlugin() {
 
     auto stage = std::make_shared<PriorProScanIII>(portName, printCommunication);
     PluginManager::Manager().addMotorizedStage(stage);
+    sStages.push_back(stage);
 }
 
 void ShutdownPlugin() {
-    // Imager is closing.
-    // Perform any necessary cleanup here.
+    for (const auto& stage : sStages) {
+        stage->shutdown();
+    }
+    sStages.clear();
 }

@@ -21,23 +21,6 @@ OxxiusCombiner::OxxiusCombiner(const std::string& name, const std::string& portN
 {
 }
 
-OxxiusCombiner::~OxxiusCombiner() {
-    if (_isInitialized) {
-        for (const auto& params : _lasers) {
-            if (params.type == LaserType::LBX) {
-                _sendLaserCommand(params.index, "L=0");
-                _sendLaserCommand(params.index, "DL=0");
-            }
-            if (params.type == LaserType::LCX && _turnOffLCXOnStartupAndEnd) {
-                // Disable temperature regulation (turn off laser) for LCX lasers if configured to do so
-                _sendLaserCommand(params.index, "T=0", true);
-            }
-        }
-        // Close main shutter
-        _sendCommandAndCheckResponse("SH1 0");
-    }
-}
-
 void OxxiusCombiner::initialize() {
     _serialPort.open(_portName, _baudRate, _timeoutMillis);
     _initialize();
@@ -65,6 +48,24 @@ void OxxiusCombiner::_initialize() {
             _channelNames.push_back(params.channelName);
             _initLaser(i, params);
         }
+    }
+}
+
+void OxxiusCombiner::shutdown() {
+    if (_isInitialized) {
+        for (const auto& params : _lasers) {
+            if (params.type == LaserType::LBX) {
+                _sendLaserCommand(params.index, "L=0");
+                _sendLaserCommand(params.index, "DL=0");
+            }
+            if (params.type == LaserType::LCX && _turnOffLCXOnStartupAndEnd) {
+                // Disable temperature regulation (turn off laser) for LCX lasers if configured to do so
+                _sendLaserCommand(params.index, "T=0", true);
+            }
+        }
+        // Close main shutter
+        _sendCommandAndCheckResponse("SH1 0");
+        _isInitialized = false;
     }
 }
 

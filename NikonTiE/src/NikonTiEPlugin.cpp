@@ -6,29 +6,33 @@
 
 #include "NikonTiE.h"
 
+static std::unique_ptr<NikonTiE> sMicroscope;
+
 void InitPlugin() {
-    static std::unique_ptr<NikonTiE> microscope = std::make_unique<NikonTiE>();
+    sMicroscope = std::make_unique<NikonTiE>();
 
     PluginManager& pluginManager = PluginManager::Manager();
-    for (const auto& lightSource : microscope->getLightSources()) {
+    for (const auto& lightSource : sMicroscope->getLightSources()) {
         pluginManager.addLightSource(lightSource);
     }
-    for (const auto& component : microscope->getDiscreteMovableComponents()) {
+    for (const auto& component : sMicroscope->getDiscreteMovableComponents()) {
         pluginManager.addDiscreteMovableComponent(component);
     }
-    for (const auto& component : microscope->getContinuouslyMovableComponents()) {
+    for (const auto& component : sMicroscope->getContinuouslyMovableComponents()) {
         pluginManager.addContinuouslyMovableComponent(component);
     }
-    for (const auto& stage : microscope->getMotorizedStages()) {
+    for (const auto& stage : sMicroscope->getMotorizedStages()) {
         pluginManager.addMotorizedStage(stage);
     }
-    for (const auto& robot : microscope->getRobots()) {
+    for (const auto& robot : sMicroscope->getRobots()) {
         pluginManager.addRobot(robot);
     }
 }
 
 
 void ShutdownPlugin() {
-
+    if (sMicroscope) {
+        sMicroscope->shutdown();
+    }
 }
 

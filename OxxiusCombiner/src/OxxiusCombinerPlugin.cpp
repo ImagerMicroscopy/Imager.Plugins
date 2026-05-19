@@ -10,6 +10,8 @@
 
 const int MAX_OXXIUS_COMBINERS = 8;
 
+static std::vector<std::shared_ptr<OxxiusCombiner>> sCombiners;
+
 OxxiusCombiner::ModulationMode parseModulationMode(const std::string& modeStr) {
     if (modeStr == "NoModulation") return OxxiusCombiner::ModulationMode::NoModulation;
     if (modeStr == "DigitalModulation") return OxxiusCombiner::ModulationMode::DigitalModulation;
@@ -44,6 +46,7 @@ void InitPlugin() {
             combiner->setPrintCommunication(true);
             combiner->initialize();
             PluginManager::Manager().addLightSource(combiner);
+            sCombiners.push_back(combiner);
             PluginManager::Manager().Print(std::format("Initialized {} on port {}", name, portResponse.value));
         } catch (const std::exception& e) {
             PluginManager::Manager().Print(std::format("Failed to initialize {} on port {}: {}", name, portResponse.value, e.what()));
@@ -52,4 +55,8 @@ void InitPlugin() {
 }
 
 void ShutdownPlugin() {
+    for (const auto& combiner : sCombiners) {
+        combiner->shutdown();
+    }
+    sCombiners.clear();
 }

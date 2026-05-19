@@ -155,7 +155,7 @@ OlympusIX83::OlympusIX83() :
     _openShutter();
 }
 
-OlympusIX83::~OlympusIX83() {
+void OlympusIX83::shutdown() {
     if (_ifData != nullptr) {
         _closeShutter();
         _logOut();

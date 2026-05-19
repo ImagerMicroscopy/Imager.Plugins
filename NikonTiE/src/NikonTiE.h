@@ -20,7 +20,9 @@ public:
     using StagePosition = MotorizedStage::Position;
 
     NikonTiE();
-    ~NikonTiE();
+    ~NikonTiE() { ; }
+
+    void shutdown();
 
     NikonTiE(const NikonTiE&) = delete;
     NikonTiE& operator=(const NikonTiE&) = delete;

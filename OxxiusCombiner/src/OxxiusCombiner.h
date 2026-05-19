@@ -12,12 +12,13 @@ public:
     enum class ModulationMode { NoModulation, DigitalModulation, AnalogModulation };
 
     OxxiusCombiner(const std::string& name, const std::string& portName, ModulationMode modulationMode, bool turnOffLCXOnStartupAndEnd, uint32_t baudRate = 19200, uint32_t timeoutMillis = 10000);
-    ~OxxiusCombiner() override;
+    ~OxxiusCombiner() override { ; }
 
     OxxiusCombiner(const OxxiusCombiner&) = delete;
     OxxiusCombiner& operator=(const OxxiusCombiner&) = delete;
 
     void initialize();
+    void shutdown();
 
     std::string getName() const override { return _name; }
     std::vector<std::string> getChannels() const override { return _channelNames; }

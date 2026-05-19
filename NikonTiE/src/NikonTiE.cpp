@@ -30,7 +30,7 @@ NikonTiE::NikonTiE() {
 	_switchEpiShutter(true);
 }
 
-NikonTiE::~NikonTiE() {
+void NikonTiE::shutdown() {
 	_switchEpiShutter(false);
     _theMicroscope.Release();
     CoUninitialize();

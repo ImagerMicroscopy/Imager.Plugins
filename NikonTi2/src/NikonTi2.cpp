@@ -24,9 +24,8 @@ NikonTi2::NikonTi2() {
 	_setFluorescenceShutter(true);
 }
 
-NikonTi2::~NikonTi2() {
-	_setFluorescenceShutter(false);
-
+void NikonTi2::shutdown() {
+    _setFluorescenceShutter(false);
     MIC_Close();
 }
 

@@ -16,10 +16,12 @@
 class NikonTi2 {
 public:
     NikonTi2();
-    ~NikonTi2();
+    ~NikonTi2() { ; }
 
     NikonTi2(const NikonTi2&) = delete;
     NikonTi2& operator=(const NikonTi2&) = delete;
+
+    void shutdown();
 
     std::vector<std::shared_ptr<LightSource>> getLightSources() { return {}; }
     std::vector<std::shared_ptr<DiscreteMovableComponent>> getDiscreteMovableComponents();

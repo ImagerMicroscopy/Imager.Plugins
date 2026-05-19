@@ -10,10 +10,12 @@
 class PriorProScanIII : public MotorizedStage {
 public:
     PriorProScanIII(const std::string& portName, bool printCommunication, uint32_t baudRate = 9600, uint32_t timeoutMillis = 30000);
-    ~PriorProScanIII() override;
+    ~PriorProScanIII() override { ; }
 
     PriorProScanIII(const PriorProScanIII&) = delete;
     PriorProScanIII& operator=(const PriorProScanIII&) = delete;
+
+    void shutdown();
 
     std::string getName() const override { return _name; }
     bool supportsX() const override { return true; }

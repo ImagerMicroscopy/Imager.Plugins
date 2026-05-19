@@ -14,9 +14,11 @@ PriorProScanIII::PriorProScanIII(const std::string& portName, bool printCommunic
     initialize();
 }
 
-PriorProScanIII::~PriorProScanIII() {
+void PriorProScanIII::shutdown() {
     if (_isInitialized) {
         stopMoving();
+        _serialPort.close();
+        _isInitialized = false;
     }
 }
 

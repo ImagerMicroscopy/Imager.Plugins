@@ -59,10 +59,12 @@ public:
     using StagePosition = MotorizedStage::Position;   // x, y, z, usingHardwareAF, afOffset
 
     OlympusIX83();
-    ~OlympusIX83();
+    ~OlympusIX83() { ; }
 
     OlympusIX83(const OlympusIX83&) = delete;
     OlympusIX83& operator=(const OlympusIX83&) = delete;
+
+    void shutdown();
 
     std::vector<std::shared_ptr<LightSource>> getLightSources() { return {}; }
     std::vector<std::shared_ptr<DiscreteMovableComponent>> getDiscreteMovableComponents();

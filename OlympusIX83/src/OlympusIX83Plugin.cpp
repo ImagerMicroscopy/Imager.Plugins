@@ -6,29 +6,33 @@
 
 #include "OlympusIX83.h"
 
+static std::unique_ptr<OlympusIX83> sMicroscope;
+
 void InitPlugin() {
-    static std::unique_ptr<OlympusIX83> microscope = std::make_unique<OlympusIX83>();
+    sMicroscope = std::make_unique<OlympusIX83>();
 
     PluginManager& pluginManager = PluginManager::Manager();
-    for (const auto& lightSource : microscope->getLightSources()) {
+    for (const auto& lightSource : sMicroscope->getLightSources()) {
         pluginManager.addLightSource(lightSource);
     }
-    for (const auto& component : microscope->getDiscreteMovableComponents()) {
+    for (const auto& component : sMicroscope->getDiscreteMovableComponents()) {
         pluginManager.addDiscreteMovableComponent(component);
     }
-    for (const auto& component : microscope->getContinuouslyMovableComponents()) {
+    for (const auto& component : sMicroscope->getContinuouslyMovableComponents()) {
         pluginManager.addContinuouslyMovableComponent(component);
     }
-    for (const auto& stage : microscope->getMotorizedStages()) {
+    for (const auto& stage : sMicroscope->getMotorizedStages()) {
         pluginManager.addMotorizedStage(stage);
     }
-    for (const auto& robot : microscope->getRobots()) {
+    for (const auto& robot : sMicroscope->getRobots()) {
         pluginManager.addRobot(robot);
     }
 }
 
 
 void ShutdownPlugin() {
-
+    if (sMicroscope) {
+        sMicroscope->shutdown();
+    }
 }
 
