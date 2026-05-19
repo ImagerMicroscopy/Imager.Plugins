@@ -180,7 +180,7 @@ std::string OxxiusCombiner::_queryLaserInfo(int index) {
     std::string cmd = std::format("L{} INF?\n", index);
 
     
-    std::string response = _serialPort.writeAndReadUntilStringWithPolling(cmd, "\n");
+    std::string response = _serialPort.writeAndReadUntilString(cmd, "\n");
 
     // Check for error responses
     if (response.find("timeout") != std::string::npos || 
