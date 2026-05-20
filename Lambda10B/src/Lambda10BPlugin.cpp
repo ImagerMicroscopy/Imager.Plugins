@@ -7,6 +7,8 @@
 
 #include "Lambda10B.h"
 
+static std::vector<std::shared_ptr<Lambda10B>> sDevices;
+
 void InitPlugin() {
     PluginManager& pluginManager = PluginManager::Manager();
 
@@ -14,7 +16,6 @@ void InitPlugin() {
 
     ConfigManager& configManager = pluginManager.getConfigManager();
 
-    std::vector<std::shared_ptr<Lambda10B>> devices;
     // allow up to 8 filterwheels
     for (int i = 1; i <= 8; ++i) {
         std::string fwName = std::format("Lambda10B_{}", i);
@@ -35,13 +36,16 @@ void InitPlugin() {
             filterNames.push_back(filterResponse.value);
         }
 
+        auto communicationResponse = configManager.getBoolSettingOrDefault(fwName / "PrintCommunication", false);
+        bool printCommunication = communicationResponse.value;
+
         if (!portName.empty()) {
             auto lambda10b = std::make_shared<Lambda10B>(portName, baudrate, filterNames, fwSpeed);
             lambda10b->init();
             for (const auto& component : lambda10b->getDiscreteMovableComponents()) {
                 pluginManager.addDiscreteMovableComponent(component);
             }
-            devices.push_back(lambda10b);
+            sDevices.push_back(lambda10b);
         }
     }
 
@@ -49,6 +53,7 @@ void InitPlugin() {
 
 
 void ShutdownPlugin() {
-
+    for (auto &device : sDevices) {
+        device->shutdown();
+    }
 }
-

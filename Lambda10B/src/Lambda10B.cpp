@@ -18,12 +18,11 @@ Lambda10B::~Lambda10B() {
 void Lambda10B::init() {
     _serialPort.open(_portName, _baudrate, 5000);
 
-    if (_serialPort.writeByteAndReadByte(238) != 13) {
-        throw std::runtime_error("Lambda10B did not respond to sync byte");
-    }
-    if (_serialPort.writeByteAndReadByte(253) != 13) {
-        throw std::runtime_error("Lambda10B did not respond to sync byte");
-    }
+    _sendCommand(238);  // transfer to on-line mode
+}
+
+void Lambda10B::shutdown() {
+    _sendCommand(239);  // transfer to local mode
 }
 
 std::vector<std::shared_ptr<DiscreteMovableComponent>> Lambda10B::getDiscreteMovableComponents() {
@@ -37,16 +36,33 @@ std::vector<std::shared_ptr<DiscreteMovableComponent>> Lambda10B::getDiscreteMov
             if (it == _filterNames.cend()) {
                 throw std::runtime_error("invalid filter setting: " + setting);
             }
-            int filterIndex = std::distance(_filterNames.cbegin(), it) + 1;
+            int filterIndex = std::distance(_filterNames.cbegin(), it);
             _setFilter(filterIndex);
         }
     ));
     return components;
 }
 
+void Lambda10B::_sendCommand(std::uint8_t command) {
+    std::string cmd({static_cast<char>(command)});
+    std::string response = _serialPort.writeAndReadUntilString(cmd, "\r");
+    if (response.size() != 2) {
+        std::string errMsg = std::format("Invalid response from Lambda10B to command (0x{:02X})", static_cast<unsigned int>(command));
+        throw std::runtime_error(errMsg);
+    }
+    std::uint8_t responseByte = static_cast<std::uint8_t>(response.at(0));
+    if (responseByte != command) {
+        // Lambda10B echoes the byte back
+        std::string errMsg = std::format("Did not get echoed byte from Lambda10B, sent (0x{:02X}, received (0x{:02X})",
+            static_cast<unsigned int>(command), static_cast<unsigned int>(responseByte));
+        throw std::runtime_error(errMsg);
+    }
+    if (response.at(1) != 13) {
+        throw std::runtime_error("Did not receive CR from Lambda10B");
+    }
+}
+
 void Lambda10B::_setFilter(int filterIndex) {
     std::uint8_t commandByte = (_fwSpeed << 4) | filterIndex;
-    if (_serialPort.writeByteAndReadByte(commandByte) != 13) {
-        throw std::runtime_error("Lambda10B did not respond to filter command");
-    }
+    _sendCommand(commandByte);
 }

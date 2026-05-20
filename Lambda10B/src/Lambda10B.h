@@ -15,6 +15,8 @@ public:
     ~Lambda10B();
 
     void init();
+    void shutdown();
+    void setPrintCommunication(bool doIt) {_serialPort.setPrintCommunication(doIt);}
 
     Lambda10B(const Lambda10B&) = delete;
     Lambda10B& operator=(const Lambda10B&) = delete;
@@ -22,6 +24,7 @@ public:
     std::vector<std::shared_ptr<DiscreteMovableComponent>> getDiscreteMovableComponents();
 
 private:
+    void _sendCommand(std::uint8_t command);
     void _setFilter(int filterIndex);
 
     std::string _portName;
