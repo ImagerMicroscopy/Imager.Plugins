@@ -7,7 +7,7 @@
 
 #include "ImagerPluginCore/DeviceTemplates.h"
 
-#import "../lib/x64/NikonTi.dll" named_guids
+#import "../lib/NikonTi.dll" named_guids
 
 class NikonTiE {
 public:
