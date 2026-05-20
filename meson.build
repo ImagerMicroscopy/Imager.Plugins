@@ -11,6 +11,7 @@ endif
 subdir('DummyCamera')
 subdir('DummyEquipment')
 subdir('Lambda10B')
+subdir('MarzhauserTango')
 subdir('NikonTi2')
 subdir('NikonTiE')
 subdir('OlympusIX83')

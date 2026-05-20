@@ -4,10 +4,6 @@
 plugin_name = 'Lambda10B'
 # ---------------------
 
-# Enforce 64-bit build
-
-# Ensure the equipment name macro is available to all subprojects (especially ImagerPluginCore)
-
 # Fetch the core Imager plugin support files
 imager_core_dep = dependency('imagerplugincore')
 
