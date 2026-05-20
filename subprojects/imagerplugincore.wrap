@@ -1,6 +1,6 @@
 [wrap-git]
 url = https://github.com/ImagerMicroscopy/Imager.PluginCore.git
-revision = b7a95bcf68ac4e042788094a0acfa38c06fc4160
+revision = da425cc6a44b0c66c941757be84b08f4a4141dab
 depth = 1
 
 [provide]
