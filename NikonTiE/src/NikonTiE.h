@@ -19,7 +19,7 @@ public:
     using StagePosition = MotorizedStage::Position;
 
     NikonTiE();
-    ~NikonTiE() { ; }
+    ~NikonTiE();
 
     void shutdown();
 

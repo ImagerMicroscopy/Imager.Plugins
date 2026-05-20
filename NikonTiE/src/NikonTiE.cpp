@@ -36,6 +36,8 @@ NikonTiE::NikonTiE() : _impl(std::make_unique<Impl>()) {
 	_switchEpiShutter(true);
 }
 
+NikonTiE::~NikonTiE() = default;
+
 void NikonTiE::shutdown() {
 	_switchEpiShutter(false);
     _impl->microscope.Release();
