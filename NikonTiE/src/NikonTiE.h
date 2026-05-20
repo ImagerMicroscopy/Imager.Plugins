@@ -4,10 +4,9 @@
 #include <vector>
 #include <string>
 #include <cstdint>
+#include <memory>
 
 #include "ImagerPluginCore/DeviceTemplates.h"
-
-#import "../lib/NikonTi.dll" named_guids
 
 class NikonTiE {
 public:
@@ -54,7 +53,8 @@ private:
 	double _toMicroMeter(double val, const std::string& unit) const;
 	double _toUnit(double valmicrometer, const std::string& unit) const;
 
-    TISCOPELib::INikonTiPtr _theMicroscope;
+    struct Impl;
+    std::unique_ptr<Impl> _impl;
 };
 
 #endif

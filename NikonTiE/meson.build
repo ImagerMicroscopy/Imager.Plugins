@@ -18,6 +18,9 @@ imager_api_source = imager_core_sp.get_variable('api_source')
 # Add an include dir so that we can use ImagerPluginCore/ syntax to access its headers
 core_inc = include_directories('.')
 
+# Path to the Nikon DLL so the compiler can `#import` it from any working dir
+nikondll_path = meson.current_source_dir() + '/lib/NikonTi.dll'
+
 # Define the shared library (DLL) target for the plugin
 shared_library(plugin_name,
   'src/NikonTiEPlugin.cpp',

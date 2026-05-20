@@ -1,5 +1,7 @@
 #include "NikonTiE.h"
 
+#import "../lib/NikonTi.dll" named_guids
+
 #include <algorithm>
 #include <functional>
 #include <stdexcept>
@@ -7,6 +9,10 @@
 #include "windows.h"
 
 #include "Utils.h"
+
+struct NikonTiE::Impl {
+    TISCOPELib::INikonTiPtr microscope;
+};
 
 void HandleNikonException(std::function<void()> f) {
     try {
@@ -21,10 +27,10 @@ void HandleNikonException(std::function<void()> f) {
     }
 }
 
-NikonTiE::NikonTiE() {
+NikonTiE::NikonTiE() : _impl(std::make_unique<Impl>()) {
     CoInitializeEx(nullptr, COINIT_MULTITHREADED);
 
-    if (_theMicroscope.CreateInstance(TISCOPELib::CLSID_NikonTi) != S_OK) {
+    if (_impl->microscope.CreateInstance(TISCOPELib::CLSID_NikonTi) != S_OK) {
         throw std::runtime_error("unable to find Nikon Ti1 microscope");
     }
 	_switchEpiShutter(true);
@@ -32,7 +38,7 @@ NikonTiE::NikonTiE() {
 
 void NikonTiE::shutdown() {
 	_switchEpiShutter(false);
-    _theMicroscope.Release();
+    _impl->microscope.Release();
     CoUninitialize();
 }
 
@@ -87,7 +93,7 @@ bool NikonTiE::hasMotorizedDichroic() const {
 		ScopedRunner sr([&]() {
 			if (pFBC != nullptr) pFBC->Release();
 		});
-		if ((_theMicroscope->get_FilterBlockCassette1(&pFBC) == S_OK) && (long(pFBC->IsMounted) == TISCOPELib::StatusTrue)) {
+		if ((_impl->microscope->get_FilterBlockCassette1(&pFBC) == S_OK) && (long(pFBC->IsMounted) == TISCOPELib::StatusTrue)) {
 			isMounted = true;
 		}
     });
@@ -97,7 +103,7 @@ bool NikonTiE::hasMotorizedDichroic() const {
 std::vector<std::string> NikonTiE::listDichroicMirrors() const {
     std::vector<std::string> dmList;
 	HandleNikonException([&]() {
-		auto pFBC = _theMicroscope->FilterBlockCassette1;
+		auto pFBC = _impl->microscope->FilterBlockCassette1;
 		if (long(pFBC->IsMounted) == TISCOPELib::StatusTrue) {
 			auto pFilterBlocks = pFBC->FilterBlocks;
 			for (int i = 1; i <= pFilterBlocks->GetCount(); i += 1) {
@@ -118,7 +124,7 @@ void NikonTiE::setDichroicMirror(const std::string& dichroicMirrorName) {
     }
     int itemIndex = static_cast<int>(it - dmList.cbegin() + 1);   // index numbering starts from 1 in the Nikon SDK
     HandleNikonException([&]() {
-		auto pFBC = _theMicroscope->FilterBlockCassette1;
+		auto pFBC = _impl->microscope->FilterBlockCassette1;
 		if (long(pFBC->IsMounted) == TISCOPELib::StatusTrue) {
 			pFBC->Position = itemIndex;
 		}
@@ -152,13 +158,13 @@ std::vector<NikonTiE::StageAxis> NikonTiE::supportedStageAxes() const {
 			if (pYDrive != nullptr) pYDrive->Release();
 			if (pZDrive != nullptr) pZDrive->Release();
 		});
-		if ((_theMicroscope->get_XDrive(&pXDrive) == S_OK) && (long(pXDrive->IsMounted) == TISCOPELib::StatusTrue)) {
+		if ((_impl->microscope->get_XDrive(&pXDrive) == S_OK) && (long(pXDrive->IsMounted) == TISCOPELib::StatusTrue)) {
 			axes.push_back(xAxis);
 		}
-		if ((_theMicroscope->get_YDrive(&pYDrive) == S_OK) && (long(pYDrive->IsMounted) == TISCOPELib::StatusTrue)) {
+		if ((_impl->microscope->get_YDrive(&pYDrive) == S_OK) && (long(pYDrive->IsMounted) == TISCOPELib::StatusTrue)) {
 			axes.push_back(yAxis);
 		}
-		if ((_theMicroscope->get_ZDrive(&pZDrive) == S_OK) && (long(pZDrive->IsMounted) == TISCOPELib::StatusTrue)) {
+		if ((_impl->microscope->get_ZDrive(&pZDrive) == S_OK) && (long(pZDrive->IsMounted) == TISCOPELib::StatusTrue)) {
 			axes.push_back(zAxis);
 		}
     });
@@ -179,23 +185,23 @@ NikonTiE::StagePosition NikonTiE::getStagePosition() {
 			if (pYDrive != nullptr) pYDrive->Release();
 			if (pZDrive != nullptr) pZDrive->Release();
 		});
-		if ((_theMicroscope->get_XDrive(&pXDrive) == S_OK) && (long(pXDrive->IsMounted) == TISCOPELib::StatusTrue)) {
+		if ((_impl->microscope->get_XDrive(&pXDrive) == S_OK) && (long(pXDrive->IsMounted) == TISCOPELib::StatusTrue)) {
 			long lPosition = pXDrive->Position;
 			std::string unit = BStrToStdString(pXDrive->GetUnit());
 			x = _toMicroMeter(lPosition, unit);
 		}
-		if ((_theMicroscope->get_YDrive(&pYDrive) == S_OK) && (long(pYDrive->IsMounted) == TISCOPELib::StatusTrue)) {
+		if ((_impl->microscope->get_YDrive(&pYDrive) == S_OK) && (long(pYDrive->IsMounted) == TISCOPELib::StatusTrue)) {
 			long lPosition = pYDrive->Position;
 			std::string unit = BStrToStdString(pYDrive->GetUnit());
 			y = _toMicroMeter(lPosition, unit);
 		}
-        if ((_theMicroscope->get_ZDrive(&pZDrive) == S_OK) && (long(pZDrive->IsMounted) == TISCOPELib::StatusTrue)) {
+        if ((_impl->microscope->get_ZDrive(&pZDrive) == S_OK) && (long(pZDrive->IsMounted) == TISCOPELib::StatusTrue)) {
             long lPosition = pZDrive->Position;
 			z = (double)lPosition / 40.0;	// "Z-drive stage position is leaner encoder in pulse unit" ???
         }
-        if ((long)(_theMicroscope->PFS->IsMounted) == TISCOPELib::StatusTrue) {
-            pfsIsActive = ((long)_theMicroscope->PFS->IsEnabled == TISCOPELib::StatusTrue);
-            pfsOffset = _theMicroscope->PFS->Value;
+        if ((long)(_impl->microscope->PFS->IsMounted) == TISCOPELib::StatusTrue) {
+            pfsIsActive = ((long)_impl->microscope->PFS->IsEnabled == TISCOPELib::StatusTrue);
+            pfsOffset = _impl->microscope->PFS->Value;
         }
     });
 
@@ -217,27 +223,27 @@ void NikonTiE::setStagePosition(const StagePosition& pos) {
 			if (pYDrive != nullptr) pYDrive->Release();
 			if (pZDrive != nullptr) pZDrive->Release();
 		});
-		if ((_theMicroscope->get_XDrive(&pXDrive) == S_OK) && (long(pXDrive->IsMounted) == TISCOPELib::StatusTrue)) {
+		if ((_impl->microscope->get_XDrive(&pXDrive) == S_OK) && (long(pXDrive->IsMounted) == TISCOPELib::StatusTrue)) {
 			std::string unit = BStrToStdString(pXDrive->GetUnit());
 			pXDrive->MoveAbsolute(static_cast<long>(_toUnit(x, unit)));
 		}
-		if ((_theMicroscope->get_YDrive(&pYDrive) == S_OK) && (long(pYDrive->IsMounted) == TISCOPELib::StatusTrue)) {
+		if ((_impl->microscope->get_YDrive(&pYDrive) == S_OK) && (long(pYDrive->IsMounted) == TISCOPELib::StatusTrue)) {
 			std::string unit = BStrToStdString(pYDrive->GetUnit());
 			pYDrive->MoveAbsolute(static_cast<long>(_toUnit(y, unit)));
 		}
-		if ((_theMicroscope->get_ZDrive(&pZDrive) == S_OK) && (long(pZDrive->IsMounted) == TISCOPELib::StatusTrue)) {
+		if ((_impl->microscope->get_ZDrive(&pZDrive) == S_OK) && (long(pZDrive->IsMounted) == TISCOPELib::StatusTrue)) {
 			long zPos = static_cast<long>(z * 40.0);
 			pZDrive->MoveAbsolute(zPos);
 			//std::string unit = BStrToStdString(pZDrive->GetUnit());
 			//pZDrive->MoveAbsolute(_toUnit(z, unit));
 		}
 
-        if ((long)_theMicroscope->PFS->IsMounted == TISCOPELib::StatusTrue) {
+        if ((long)_impl->microscope->PFS->IsMounted == TISCOPELib::StatusTrue) {
             if (usingHardwareAF) {
-                _theMicroscope->PFS->Position = (long)afOffset;
-                _theMicroscope->PFS->Enable();
+                _impl->microscope->PFS->Position = (long)afOffset;
+                _impl->microscope->PFS->Enable();
             } else {
-                _theMicroscope->PFS->Disable();
+                _impl->microscope->PFS->Disable();
             }
         }
     });
@@ -245,7 +251,7 @@ void NikonTiE::setStagePosition(const StagePosition& pos) {
 
 void NikonTiE::_switchEpiShutter(bool openIt) {
 	HandleNikonException([&]() {
-		auto epiShutterPtr = _theMicroscope->EpiShutter;
+		auto epiShutterPtr = _impl->microscope->EpiShutter;
 		if (long(epiShutterPtr->IsMounted) == TISCOPELib::StatusTrue) {
 			if (openIt) {
 				epiShutterPtr->Open();
