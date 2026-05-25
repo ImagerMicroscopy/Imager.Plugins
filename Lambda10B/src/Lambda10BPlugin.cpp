@@ -22,7 +22,7 @@ void InitPlugin() {
         auto portResponse = configManager.getStringSettingOrDefault(fwName / "Port", "");
         std::string portName = portResponse.value;
 
-        auto baudrateResponse = configManager.getIntSettingOrDefault(fwName / "Baudrate", 115200);
+        auto baudrateResponse = configManager.getIntSettingOrDefault(fwName / "Baudrate", 9600);
         int baudrate = baudrateResponse.value;
 
         auto speedResponse = configManager.getIntSettingOrDefault(fwName / "Speed", 1);
