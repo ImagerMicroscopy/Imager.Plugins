@@ -30,7 +30,7 @@ void InitPlugin() {
 
         // up to 10 filters per device
         std::vector<std::string> filterNames;
-        for (int f = 1; f <= 10; ++f) {
+        for (int f = 0; f <= 9; ++f) {
             std::string filterName = std::format("Filter{}", f);
             auto filterResponse = configManager.getStringSettingOrDefault(fwName / filterName, "");
             filterNames.push_back(filterResponse.value);
