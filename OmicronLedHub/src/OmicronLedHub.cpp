@@ -29,6 +29,11 @@ void OmicronLedHub::initialize() {
 void OmicronLedHub::shutdown() {
     if (_isInitialized) {
         deactivate();
+
+        // restore original operating mode
+        std::string gomCmd = std::format("?GOM{:04X}", _originalOperatingMode);
+        std::string gomResp = _sendCommand(gomCmd);
+
         _serialPort.close();
         _isInitialized = false;
     }
@@ -45,7 +50,7 @@ void OmicronLedHub::activate(const std::vector<ChannelSetting>& channelSettings)
         int channelIndex = std::distance(_channelNames.begin(), it);
 
         if (power > 0.0) {
-            channelMask |= (1 << channelIndex); // Mark this channel to be activated
+            channelMask |= (1 << channelIndex); // Mark this channel for activation
         }
 
         std::string powerCmd = std::format("?TPP[{}]{:.1f}", channelIndex + 1, power);
@@ -67,7 +72,7 @@ void OmicronLedHub::activate(const std::vector<ChannelSetting>& channelSettings)
 }
 
 void OmicronLedHub::deactivate() {
-    std::string cmsResp = _sendCommand("?CMM00");
+    std::string cmsResp = _sendCommand("?CMMFF");
     if (cmsResp != "!CMM>\r") {
         throw std::runtime_error(std::format("Failed to set channel mask: {}", cmsResp));
     };
@@ -80,6 +85,32 @@ void OmicronLedHub::deactivate() {
 void OmicronLedHub::_initialize() {
     int nMatched = 0;
     char buf1[64], buf2[64], buf3[64];
+
+    // try to prevent the device from sending unsolicited messages by
+    // adjusting its operating mode. Get the current mode to restore it on shutdown.
+    // We attempt it multiple times in case the device is sending unsolicited messages
+    // while we are trying to do this.
+    bool haveGOM = false;
+    for (int attempt = 0; attempt < 10; ++attempt) {
+        std::string response = _sendCommand("?GOM");
+        nMatched = std::sscanf(response.c_str(), "!GOM%hu\r", &_originalOperatingMode);
+        if (nMatched == 1) {
+            haveGOM = true;
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    if (!haveGOM) {
+        throw std::runtime_error("Failed to get operating mode from LedHUB after multiple attempts.");
+    }
+
+    std::uint16_t newOperatingMode = _originalOperatingMode & ~(1 << 13);
+    std::string gomCmd = std::format("?GOM{:04X}", newOperatingMode);
+    std::string gomResp = _sendCommand(gomCmd);
+    // if the system was still in ad hoc mode then the response may be garbage.
+    // assume the command worked and simply clear the I/O buffers.
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    _serialPort.clearBuffers();
 
     std::string fw = _sendCommand("?GFw|");
     nMatched = std::sscanf(fw.c_str(), "!GFw%63[^|] | %63[^|] | %63[^|]\r", buf1, buf2, buf3);

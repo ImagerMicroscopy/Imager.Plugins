@@ -44,6 +44,7 @@ private:
 
     int _availableChannels = 0;
     std::vector<std::string> _channelNames;
+    std::uint16_t _originalOperatingMode;
     
     bool _isInitialized{false};
 };
