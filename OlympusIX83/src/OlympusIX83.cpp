@@ -151,7 +151,7 @@ OlympusIX83::OlympusIX83() :
 
     auto [dNames,dLabels] = _getDichroicNames(); 
     _dichroicNames = dNames; // 
-    _dichoicLabels = dLabels;
+    _dichroicLabels = dLabels;
     _openShutter();
 }
 
@@ -177,6 +177,12 @@ std::vector<std::shared_ptr<DiscreteMovableComponent>> OlympusIX83::getDiscreteM
             }
         ));
     }
+    components.push_back(std::make_shared<DiscreteMovableComponentFunctor>(
+        "Focus Drift Compensation",
+        std::vector<std::string>{"Off","On"},
+        [this](const std::string& setting) {
+            _setZDCEnabled(setting == "On");
+        }));
     return components;
 }
 
@@ -198,14 +204,14 @@ std::vector<std::shared_ptr<MotorizedStage>> OlympusIX83::getMotorizedStages() {
 }
 
 std::vector<std::string> OlympusIX83::listDichroicMirrors() const {
-    return _dichoicLabels;
+    return _dichroicLabels;
 }
 
 void OlympusIX83::setDichroicMirror(const std::string& dichroicMirrorLabel) {
-    auto it = std::find(_dichoicLabels.begin(), _dichoicLabels.end(), dichroicMirrorLabel);
-    if (it != _dichoicLabels.end()) {
+    auto it = std::find(_dichroicLabels.begin(), _dichroicLabels.end(), dichroicMirrorLabel);
+    if (it != _dichroicLabels.end()) {
         // FOUND
-        int index = static_cast<int>(std::distance(_dichoicLabels.begin(), it));
+        int index = static_cast<int>(std::distance(_dichroicLabels.begin(), it));
         _setDichroicPosition(_dichroicNames[index]);
     } else {
         // NOT FOUND
@@ -336,6 +342,17 @@ void OlympusIX83::_setObjective(const std::string& objectiveName) {
     if (response.find("OB +") == std::string::npos) {
         throw std::runtime_error("error when changing objective");
     }
+}
+
+bool OlympusIX83::_getZDCEnabled() {
+    std::string response = _sendAndWait("ZDC?");
+    int state = 0;
+    sscanf_s(response.c_str(), "%*s %d", &state);
+    return state != 0;
+}
+
+void OlympusIX83::_setZDCEnabled(bool enabled) {
+    _sendAndWait(enabled ? "ZDC 1" : "ZDC 0");
 }
 
 void OlympusIX83::_openShutter() {

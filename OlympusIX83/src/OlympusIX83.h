@@ -98,6 +98,8 @@ private:
 
     void _openShutter();
     void _closeShutter();
+    void _getZDCEnabled();
+    void _setZDCEnabled(bool enabled);
 
     void _send(std::string cmd);
     std::string _sendAndWait(std::string cmd);
