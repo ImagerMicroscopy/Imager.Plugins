@@ -98,13 +98,12 @@ private:
 
     void _openShutter();
     void _closeShutter();
-    void _getZDCEnabled();
     void _setZDCEnabled(bool enabled);
 
     void _send(std::string cmd);
     std::string _sendAndWait(std::string cmd);
 
-    std::vector<std::string> _dichoicLabels;
+    std::vector<std::string> _dichroicLabels;
     std::vector<std::string> _dichroicNames;
 
     HMODULE _sdkModule;

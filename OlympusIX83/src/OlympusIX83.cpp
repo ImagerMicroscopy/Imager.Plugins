@@ -344,15 +344,13 @@ void OlympusIX83::_setObjective(const std::string& objectiveName) {
     }
 }
 
-bool OlympusIX83::_getZDCEnabled() {
-    std::string response = _sendAndWait("ZDC?");
-    int state = 0;
-    sscanf_s(response.c_str(), "%*s %d", &state);
-    return state != 0;
-}
-
 void OlympusIX83::_setZDCEnabled(bool enabled) {
-    _sendAndWait(enabled ? "ZDC 1" : "ZDC 0");
+    _sendAndWait("EN5 0");              // disable TPC/MMI around AF control
+    std::string response = _sendAndWait(enabled ? "AF 2" : "AF 0");
+    _sendAndWait("EN5 1");              // re-enable TPC/MMI
+    if (response.find("AF +") == std::string::npos) {
+        throw std::runtime_error("error when setting focus drift compensation");
+    }
 }
 
 void OlympusIX83::_openShutter() {

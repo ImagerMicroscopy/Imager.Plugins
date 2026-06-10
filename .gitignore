@@ -62,3 +62,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+# OlympusIX83 API reference
+OlympusIX83/apiRef/
