@@ -29,16 +29,16 @@ jobs:
       - name: Set up MSVC Developer Command Prompt
         uses: ilammy/msvc-dev-cmd@v1
 
-      # 1. Build MicroscopeBody
-      - name: Configure MicroscopeBody (${{ matrix.microscope }})
-        run: |
-          cd MicroscopeBody/src
-          meson setup ../build -Dmicroscope_type=${{ matrix.microscope }} --buildtype=release
+      # # 1. Build MicroscopeBody
+      # - name: Configure MicroscopeBody (${{ matrix.microscope }})
+      #   run: |
+      #     cd MicroscopeBody/src
+      #     meson setup ../build -Dmicroscope_type=${{ matrix.microscope }} --buildtype=release
 
-      - name: Compile MicroscopeBody (${{ matrix.microscope }})
-        run: |
-          cd MicroscopeBody/src
-          meson compile -C ../build
+      # - name: Compile MicroscopeBody (${{ matrix.microscope }})
+      #   run: |
+      #     cd MicroscopeBody/src
+      #     meson compile -C ../build
 
       # 2. Build OlympusRTC
       - name: Build OlympusRTC
