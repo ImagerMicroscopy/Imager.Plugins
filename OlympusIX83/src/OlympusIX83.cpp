@@ -4,7 +4,6 @@
 #include <cctype>
 #include <format>
 #include <fstream>
-#include <iostream>
 #include <iterator>
 #include <sstream>
 #include <stdexcept>
@@ -17,16 +16,18 @@
 // Objective hole n (1..6) maps to control ID (kObjectiveControlIdBase + n).
 static constexpr int kNumObjectiveHoles      = 6;
 static constexpr int kObjectiveControlIdBase = 150;   // OBSEQ1..6 == 151..156
+static constexpr int kZoafControlId          = 357;   // One-Shot AF (find focus) button
 static constexpr int kZcafControlId          = 358;   // Continuous-AF start button
 // SKD display states (SKD p2): 0 = Disable, 1 = Normal, 2 = Pressed.
 static constexpr int kSkdNormal  = 1;
 static constexpr int kSkdPressed = 2;
 
 // -------------------------------------------------------------------------
-// Diagnostics. The build never defines DEBUG and std::cout is invisible from a
-// DLL inside the host, so this writes to OutputDebugString (DebugView / VS) AND
-// to %TEMP%\OlympusIX83.log. Flip kVerbose to false to silence it.
-static constexpr bool kVerbose = true;
+// Optional tracing. The build never defines DEBUG and std::cout is invisible
+// from a DLL inside the host, so this writes to OutputDebugString (DebugView /
+// VS) AND to %TEMP%\OlympusIX83.log. Off by default; flip kVerbose to true to
+// trace the command traffic and the touch-panel relay.
+static constexpr bool kVerbose = false;
 
 static void ix83Log(const std::string& line) {
     if (!kVerbose) {
@@ -51,19 +52,7 @@ static void ix83Log(const std::string& line) {
         }
     }
 }
-
-// Printable view of a byte buffer (non-printables shown as '.'), size clamped.
-static std::string bytesAscii(const BYTE* p, size_t n) {
-    if (n > MAX_RESPONSE_SIZE) {
-        n = MAX_RESPONSE_SIZE;
-    }
-    std::string s;
-    for (size_t i = 0; i < n; ++i) {
-        unsigned char c = p[i];
-        s += (c >= 0x20 && c < 0x7f) ? static_cast<char>(c) : '.';
-    }
-    return s;
-}
+// -------------------------------------------------------------------------
 
 // Unsolicited TPC notifications arrive framed inside m_Cmd (m_Rsp is empty),
 // e.g. bytes "...A<B:N36.SK 153,1...". Extract the payload after the ":N<seq>"
@@ -84,26 +73,6 @@ static std::string extractNotificationBody(const BYTE* buf, size_t len) {
     return {};
 }
 
-// Dump a callback's parameters so we can learn whether/which callback fires on a
-// touch-panel press and where the notification body actually lives.
-static void logCallbackEntry(const char* which, ULONG MsgId, ULONG wParam,
-                             ULONG lParam, PVOID pv, PVOID pCaller) {
-    std::string extra;
-    if (pv != nullptr) {
-        const MDK_MSL_CMD* c = reinterpret_cast<const MDK_MSL_CMD*>(pv);
-        bool isCmdStruct = (c->m_Signature == static_cast<DWORD>(GT_MDK_CMD_SIGNATURE));
-        extra = std::format(" isCmdStruct={} RspSize={} Rsp=[{}] CmdSize={} Cmd=[{}]",
-            isCmdStruct, static_cast<unsigned long>(c->m_RspSize),
-            bytesAscii(c->m_Rsp, c->m_RspSize),
-            static_cast<unsigned long>(c->m_CmdSize),
-            bytesAscii(c->m_Cmd, c->m_CmdSize));
-    }
-    ix83Log(std::format("{} MsgId={} w={} l={} pv={:#x} pCaller={:#x}{}",
-        which, MsgId, wParam, lParam,
-        reinterpret_cast<uintptr_t>(pv), reinterpret_cast<uintptr_t>(pCaller), extra));
-}
-// -------------------------------------------------------------------------
-
 std::pair<std::string, std::string> parseResponse(const std::string& response);
 
 int CALLBACK CommandCallback(
@@ -114,8 +83,6 @@ int CALLBACK CommandCallback(
     [[maybe_unused]] PVOID		pContext,		// This contains information on this call back function.
     [[maybe_unused]] PVOID		pCaller			// This is the pointer specified by a user in the requirement function.
 ) {
-    logCallbackEntry("CMD", MsgId, wParam, lParam, pv, pCaller);
-
     OlympusIX83* olympusIX83 = reinterpret_cast<OlympusIX83*>(pContext);
 
     olympusIX83->_callbackQueue.enqueue(0);
@@ -125,8 +92,8 @@ int CALLBACK CommandCallback(
 
 //	NOTIFICATION: call back entry from SDK port manager.
 //	Fires on an SDK thread for unsolicited notifications (SK, NOB, NFP, ...).
-//	The notification body is delivered in the MDK_MSL_CMD passed via pv; we read
-//	it the same way _sendAndWait reads a command response (m_Rsp / m_RspSize).
+//	The notification body is delivered framed inside the MDK_MSL_CMD's m_Cmd
+//	(m_Rsp is empty for notifications); extractNotificationBody pulls the payload.
 int	CALLBACK NotifyCallback(
     [[maybe_unused]] ULONG		MsgId,			// Callback ID.
     [[maybe_unused]] ULONG		wParam,			// Callback parameter, it depends on callback event.
@@ -135,8 +102,6 @@ int	CALLBACK NotifyCallback(
     [[maybe_unused]] PVOID		pContext,		// This contains information on this call back function.
     [[maybe_unused]] PVOID		pCaller			// This is the pointer specified by a user in the requirement function.
 ) {
-    logCallbackEntry("NOTIFY", MsgId, wParam, lParam, pv, pCaller);
-
     OlympusIX83* olympusIX83 = reinterpret_cast<OlympusIX83*>(pContext);
 
     std::string notification;
@@ -162,8 +127,6 @@ int	CALLBACK ErrorCallback(
     [[maybe_unused]] PVOID		pContext,		// This contains information on this call back function.
     [[maybe_unused]] PVOID		pCaller			// This is the pointer specified by a user in the requirement function.
 ) {
-    logCallbackEntry("ERROR", MsgId, wParam, lParam, pv, pCaller);
-
     return 0;
 }
 
@@ -466,7 +429,8 @@ void OlympusIX83::_initHostKeyDisplay() {
         int state = (hole == _currentObjectiveHole) ? kSkdPressed : kSkdNormal;
         _sendAndWait(std::format("SKD {},{}", kObjectiveControlIdBase + hole, state));
     }
-    _sendAndWait(std::format("SKD {},{}", kZcafControlId, kSkdNormal));   // ZDC off
+    _sendAndWait(std::format("SKD {},{}", kZoafControlId, kSkdNormal));   // One-Shot AF
+    _sendAndWait(std::format("SKD {},{}", kZcafControlId, kSkdNormal));   // Continuous AF off
 }
 
 // Worker thread: relays operator touch-panel presses into hardware commands.
@@ -482,6 +446,7 @@ void OlympusIX83::_notificationWorkerLoop() {
             switch (ev.kind) {
             case TpcEvent::ChangeObjective:       _changeObjectiveViaSequence(ev.hole); break;
             case TpcEvent::ToggleZdc:             _toggleContinuousAF();                break;
+            case TpcEvent::OneShotAF:             _oneShotAF();                         break;
             case TpcEvent::ObjectiveDisplayUpdate: {
                 std::lock_guard<std::mutex> lock(_commandMutex);
                 _setObjectiveDisplay(ev.hole);
@@ -532,9 +497,30 @@ void OlympusIX83::_toggleContinuousAF() {
     _zdcOn = turnOn;
 }
 
+// Operator tapped the One-Shot AF (find focus) button: focus once. This is a
+// momentary action (AF 1), and it interrupts any running Continuous AF, so the
+// Continuous-AF button is returned to Normal if it was active.
+void OlympusIX83::_oneShotAF() {
+    std::lock_guard<std::mutex> lock(_commandMutex);
+    _sendAndWait("EN5 0");
+    _sendAndWait("AF 1");
+    if (_zdcOn) {
+        _zdcOn = false;
+        _sendAndWait(std::format("SKD {},{}", kZcafControlId, kSkdNormal));
+    }
+    _sendAndWait("EN5 1");
+}
+
 // Parse an unsolicited TPC notification and enqueue a relay event if relevant.
 // Runs on the SDK callback thread: must not block or send commands.
-void OlympusIX83::postNotification(const std::string& notification) {
+void OlympusIX83::postNotification(const std::string& raw) {
+    // Be robust to any leading framing/delimiter bytes (the protocol puts a '.'
+    // between the sequence marker and the payload): start at the keyword.
+    size_t start = 0;
+    while (start < raw.size() && !isalpha(static_cast<unsigned char>(raw[start]))) {
+        ++start;
+    }
+    std::string notification = raw.substr(start);
     ix83Log(std::format("postNotification: [{}]", notification));
 
     int id = 0;
@@ -550,6 +536,9 @@ void OlympusIX83::postNotification(const std::string& notification) {
         } else if (id == kZcafControlId) {
             ix83Log("  -> enqueue ToggleZdc");
             _notifyQueue.enqueue(TpcEvent{TpcEvent::ToggleZdc, 0});
+        } else if (id == kZoafControlId) {
+            ix83Log("  -> enqueue OneShotAF");
+            _notifyQueue.enqueue(TpcEvent{TpcEvent::OneShotAF, 0});
         } else {
             ix83Log(std::format("  SK id={} not handled", id));
         }
