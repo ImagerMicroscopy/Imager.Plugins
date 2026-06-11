@@ -3,8 +3,12 @@
 
 #define DLL_IMPORT __declspec(dllimport)
 
+#include <atomic>
 #include <filesystem>
+#include <mutex>
 #include <string>
+#include <thread>
+#include <vector>
 
 #include "Windows.h"
 
@@ -58,6 +62,19 @@ public:
 
     using StagePosition = MotorizedStage::Position;   // x, y, z, usingHardwareAF, afOffset
 
+    // A touch-panel Host-Key event relayed from the TPC to the worker thread.
+    struct TpcEvent {
+        enum Kind {
+            ChangeObjective,        // operator tapped an objective button: run OBSEQ
+            ToggleZdc,              // operator tapped the Continuous-AF button: flip AF
+            FocusEscape,            // operator tapped the focus escape/return button
+            ObjectiveUp,            // U-MCZ objective up button: step nosepiece +1
+            ObjectiveDown,          // U-MCZ objective down button: step nosepiece -1
+            ObjectiveDisplayUpdate  // nosepiece rotated manually (NOB): refresh display
+        } kind;
+        int hole;                   // objective hole position (1-based); unused for ToggleZdc
+    };
+
     OlympusIX83();
     ~OlympusIX83() { ; }
 
@@ -65,6 +82,11 @@ public:
     OlympusIX83& operator=(const OlympusIX83&) = delete;
 
     void shutdown();
+
+    // Called from the SDK notify callback (SDK thread). Parses an unsolicited
+    // TPC notification and, if relevant, enqueues it for the worker thread.
+    // Must not block / send commands.
+    void postNotification(const std::string& notification);
 
     std::vector<std::shared_ptr<LightSource>> getLightSources() { return {}; }
     std::vector<std::shared_ptr<DiscreteMovableComponent>> getDiscreteMovableComponents();
@@ -93,17 +115,42 @@ private:
     int _getDichroicPosition();
     void _setDichroicPosition(const std::string& dichroicName);
 
-    std::vector<std::string> _listObjectives();
-    void _setObjective(const std::string& objectiveName);
-
     void _openShutter();
     void _closeShutter();
+
+    // Host-Key relay: touch-panel-driven objective, ZDC and focus controls.
+    int _getObjectiveHole();
+    void _detectObjectiveHoles();
+    void _initHostKeyDisplay();
+    void _notificationWorkerLoop();
+    void _changeObjectiveViaSequence(int hole);
+    void _stepObjective(int delta);
+    void _toggleContinuousAF();
+    void _focusEscape();
+    void _setObjectiveDisplay(int newHole);
 
     void _send(std::string cmd);
     std::string _sendAndWait(std::string cmd);
 
-    std::vector<std::string> _dichoicLabels;
+    std::vector<std::string> _dichroicLabels;
     std::vector<std::string> _dichroicNames;
+
+    // Serializes every command transaction (caller-thread setters and the
+    // worker thread both drive _sendAndWait, which shares _mslCmd).
+    std::mutex _commandMutex;
+
+    // Worker thread that runs the (blocking) Host-Key command sequences off the
+    // SDK callback thread, fed by _notifyQueue.
+    moodycamel::BlockingConcurrentQueue<TpcEvent> _notifyQueue;
+    std::thread _notifyWorker;
+    std::atomic<bool> _running{false};
+
+    // State owned by the worker thread (initialized before the worker starts).
+    std::vector<int> _objectiveHoles;   // nosepiece holes that hold an objective
+    int _currentObjectiveHole{0};       // 0 == unknown
+    bool _zdcOn{false};
+    bool _focusEscaped{false};          // focus escape/return toggle state
+    double _preEscapeZ{0.0};            // focus position (um) saved at escape time
 
     HMODULE _sdkModule;
     fn_MSL_PM_GetInterfaceInfo	pfn_GetInterfaceInfo;
