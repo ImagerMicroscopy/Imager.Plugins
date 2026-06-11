@@ -8,10 +8,6 @@ on:
 jobs:
   build-windows:
     runs-on: windows-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        microscope: [nikon_ti1,nikon_ti2,olympus_ix83,dummy,do_nothing]
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -29,38 +25,16 @@ jobs:
       - name: Set up MSVC Developer Command Prompt
         uses: ilammy/msvc-dev-cmd@v1
 
-      # 1. Build MicroscopeBody
-      - name: Configure MicroscopeBody (${{ matrix.microscope }})
-        run: |
-          cd MicroscopeBody/src
-          meson setup ../build -Dmicroscope_type=${{ matrix.microscope }} --buildtype=release
+      - name: Configure build
+        run: meson setup build --buildtype=release
 
-      - name: Compile MicroscopeBody (${{ matrix.microscope }})
+      - name: Compile all plugins
         run: |
-          cd MicroscopeBody/src
-          meson compile -C ../build
+          cd build
+          meson compile
 
-      # 2. Build OlympusRTC
-      - name: Build OlympusRTC
-        run: |
-          cd OlympusRTC/src
-          meson setup ../build --buildtype=release
-          meson compile -C ../build
-
-      # 3. Build VisiTIRF
-      - name: Build VisiTIRF
-        run: |
-          cd VisiTIRF/src
-          meson setup ../build --buildtype=release
-          meson compile -C ../build
-
-      # 4. Upload Binaries
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: MicroscopeControl-${{ matrix.microscope }}
-          path: |
-            MicroscopeBody/build/*.dll
-            OlympusRTC/build/*.dll
-            VisiTIRF/build/*.dll
-        
+          name: MicroscopePlugins
+          path: build/*/*.imagerplugin
