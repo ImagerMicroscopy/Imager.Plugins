@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdio>
 #include <format>
 #include <fstream>
 #include <iterator>
@@ -45,9 +46,8 @@ static constexpr int kSdEnable = 1;
 static constexpr double kEscapeDistanceUM = 3000.0;   // 3 mm
 
 // -------------------------------------------------------------------------
-// Logging. The build never defines DEBUG and std::cout is invisible from a DLL
-// inside the host, so this writes to OutputDebugString (DebugView / VS) AND to
-// %TEMP%\OlympusIX83.log.
+// Logging. Writes to stdout via printf (the host captures it, as the other
+// plugins do) AND to %TEMP%\OlympusIX83.log.
 //   ix83Interaction() - human-readable touch-panel actions, always shown.
 //   ix83Log()         - verbose command/notification trace, gated by kVerbose.
 static constexpr bool kVerbose = true;
@@ -61,7 +61,8 @@ static void ix83Write(const std::string& line) {
     std::string stamped = std::format("[{:02}:{:02}:{:02}.{:03}] IX83: {}\n",
         st.wHour, st.wMinute, st.wSecond, st.wMilliseconds, line);
 
-    OutputDebugStringA(stamped.c_str());
+    printf("%s", stamped.c_str());
+    fflush(stdout);
 
     char dir[MAX_PATH];
     DWORD n = GetTempPathA(MAX_PATH, dir);
