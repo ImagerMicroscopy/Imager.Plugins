@@ -66,10 +66,9 @@ public:
         enum Kind {
             ChangeObjective,        // operator tapped an objective button: run OBSEQ
             ToggleZdc,              // operator tapped the Continuous-AF button: flip AF
-            OneShotAF,              // operator tapped the One-Shot AF (find focus) button
             ObjectiveDisplayUpdate  // nosepiece rotated manually (NOB): refresh display
         } kind;
-        int hole;                   // objective hole position (1-based); unused for AF events
+        int hole;                   // objective hole position (1-based); unused for ToggleZdc
     };
 
     OlympusIX83();
@@ -121,7 +120,6 @@ private:
     void _notificationWorkerLoop();
     void _changeObjectiveViaSequence(int hole);
     void _toggleContinuousAF();
-    void _oneShotAF();
     void _setObjectiveDisplay(int newHole);
 
     void _send(std::string cmd);

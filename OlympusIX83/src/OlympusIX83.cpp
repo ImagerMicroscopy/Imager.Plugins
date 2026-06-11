@@ -16,22 +16,21 @@
 // Objective hole n (1..6) maps to control ID (kObjectiveControlIdBase + n).
 static constexpr int kNumObjectiveHoles      = 6;
 static constexpr int kObjectiveControlIdBase = 150;   // OBSEQ1..6 == 151..156
-static constexpr int kZoafControlId          = 357;   // One-Shot AF (find focus) button
-static constexpr int kZcafControlId          = 358;   // Continuous-AF start button
+static constexpr int kZcafControlId          = 358;   // Continuous-AF start button (Host Key)
 // SKD display states (SKD p2): 0 = Disable, 1 = Normal, 2 = Pressed.
 static constexpr int kSkdNormal  = 1;
 static constexpr int kSkdPressed = 2;
 
-// Direct (non-Host-Key) focus/ZDC panel controls. These drive the scope
-// themselves (they report via the 'O' operation notification, which is never
-// sent for Host Keys), so we only need to un-grey their display with SD.
+// Direct (non-Host-Key) focus/ZDC panel controls (Appendix "Table Ap1": marked
+// SD, not SK). They drive the scope themselves and report via the 'O' operation
+// notification, so we only un-grey their display with SD and don't relay them.
+// (356 FFC / 360 ZAFC fine-coarse have no SD mark, so there is no host command
+// to enable them; they follow their parent slider. 354 FES is a Host Key.)
 static constexpr int kDirectControlIds[] = {
     353,   // FSL  Focus slider
-    354,   // FES  Focus escape / return
     355,   // FC   Focus coordinates (Z readout)
-    356,   // FFC  Focus fine/coarse
+    357,   // ZOAF One-Shot AF (find focus)
     359,   // ZASL Offset (aberration) lens slider
-    360,   // ZAFC Offset lens fine/coarse
 };
 // SD display state (SD p2): 0 = Disable, 1 = Enable.
 static constexpr int kSdEnable = 1;
@@ -444,7 +443,6 @@ void OlympusIX83::_initHostKeyDisplay() {
         int state = (hole == _currentObjectiveHole) ? kSkdPressed : kSkdNormal;
         _sendAndWait(std::format("SKD {},{}", kObjectiveControlIdBase + hole, state));
     }
-    _sendAndWait(std::format("SKD {},{}", kZoafControlId, kSkdNormal));   // One-Shot AF
     _sendAndWait(std::format("SKD {},{}", kZcafControlId, kSkdNormal));   // Continuous AF off
 
     // Direct controls: enable their display so the operator can use them.
@@ -466,7 +464,6 @@ void OlympusIX83::_notificationWorkerLoop() {
             switch (ev.kind) {
             case TpcEvent::ChangeObjective:       _changeObjectiveViaSequence(ev.hole); break;
             case TpcEvent::ToggleZdc:             _toggleContinuousAF();                break;
-            case TpcEvent::OneShotAF:             _oneShotAF();                         break;
             case TpcEvent::ObjectiveDisplayUpdate: {
                 std::lock_guard<std::mutex> lock(_commandMutex);
                 _setObjectiveDisplay(ev.hole);
@@ -517,20 +514,6 @@ void OlympusIX83::_toggleContinuousAF() {
     _zdcOn = turnOn;
 }
 
-// Operator tapped the One-Shot AF (find focus) button: focus once. This is a
-// momentary action (AF 1), and it interrupts any running Continuous AF, so the
-// Continuous-AF button is returned to Normal if it was active.
-void OlympusIX83::_oneShotAF() {
-    std::lock_guard<std::mutex> lock(_commandMutex);
-    _sendAndWait("EN5 0");
-    _sendAndWait("AF 1");
-    if (_zdcOn) {
-        _zdcOn = false;
-        _sendAndWait(std::format("SKD {},{}", kZcafControlId, kSkdNormal));
-    }
-    _sendAndWait("EN5 1");
-}
-
 // Parse an unsolicited TPC notification and enqueue a relay event if relevant.
 // Runs on the SDK callback thread: must not block or send commands.
 void OlympusIX83::postNotification(const std::string& raw) {
@@ -556,9 +539,6 @@ void OlympusIX83::postNotification(const std::string& raw) {
         } else if (id == kZcafControlId) {
             ix83Log("  -> enqueue ToggleZdc");
             _notifyQueue.enqueue(TpcEvent{TpcEvent::ToggleZdc, 0});
-        } else if (id == kZoafControlId) {
-            ix83Log("  -> enqueue OneShotAF");
-            _notifyQueue.enqueue(TpcEvent{TpcEvent::OneShotAF, 0});
         } else {
             ix83Log(std::format("  SK id={} not handled", id));
         }
