@@ -67,6 +67,8 @@ public:
             ChangeObjective,        // operator tapped an objective button: run OBSEQ
             ToggleZdc,              // operator tapped the Continuous-AF button: flip AF
             FocusEscape,            // operator tapped the focus escape/return button
+            ObjectiveUp,            // U-MCZ objective up button: step nosepiece +1
+            ObjectiveDown,          // U-MCZ objective down button: step nosepiece -1
             ObjectiveDisplayUpdate  // nosepiece rotated manually (NOB): refresh display
         } kind;
         int hole;                   // objective hole position (1-based); unused for ToggleZdc
@@ -120,6 +122,7 @@ private:
     void _initHostKeyDisplay();
     void _notificationWorkerLoop();
     void _changeObjectiveViaSequence(int hole);
+    void _stepObjective(int delta);
     void _toggleContinuousAF();
     void _focusEscape();
     void _setObjectiveDisplay(int newHole);
