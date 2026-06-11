@@ -66,18 +66,18 @@ static std::string bytesAscii(const BYTE* p, size_t n) {
 }
 
 // Unsolicited TPC notifications arrive framed inside m_Cmd (m_Rsp is empty),
-// e.g. bytes "...A<B:N36<delim>SK 153,1...". Extract the payload after the
-// ":N<seq>" marker: skip the sequence digits and the following delimiter
-// byte(s), then take the printable run. Returns "" if no marker is found.
+// e.g. bytes "...A<B:N36.SK 153,1...". Extract the payload after the ":N<seq>"
+// marker: skip the sequence digits and the delimiter (a '.'), then take the
+// printable run starting at the payload keyword. Returns "" if no marker found.
 static std::string extractNotificationBody(const BYTE* buf, size_t len) {
     auto printable = [](BYTE c) { return c >= 0x20 && c < 0x7f; };
     for (size_t i = 0; i + 2 < len; ++i) {
         if (buf[i] == ':' && buf[i + 1] == 'N' && isdigit(static_cast<unsigned char>(buf[i + 2]))) {
             size_t j = i + 2;
-            while (j < len && isdigit(static_cast<unsigned char>(buf[j]))) ++j;  // sequence digits
-            while (j < len && !printable(buf[j])) ++j;                           // delimiter(s)
+            while (j < len && isdigit(static_cast<unsigned char>(buf[j]))) ++j;   // sequence digits
+            while (j < len && !isalpha(static_cast<unsigned char>(buf[j]))) ++j;  // skip delimiter(s) to keyword
             size_t k = j;
-            while (k < len && printable(buf[k])) ++k;                            // payload
+            while (k < len && printable(buf[k])) ++k;                             // payload
             return std::string(reinterpret_cast<const char*>(buf + j), k - j);
         }
     }
