@@ -3,8 +3,11 @@
 
 #define DLL_IMPORT __declspec(dllimport)
 
+#include <atomic>
 #include <filesystem>
+#include <mutex>
 #include <string>
+#include <thread>
 
 #include "Windows.h"
 
@@ -58,6 +61,16 @@ public:
 
     using StagePosition = MotorizedStage::Position;   // x, y, z, usingHardwareAF, afOffset
 
+    // A touch-panel Host-Key event relayed from the TPC to the worker thread.
+    struct TpcEvent {
+        enum Kind {
+            ChangeObjective,        // operator tapped an objective button: run OBSEQ
+            ToggleZdc,              // operator tapped the Continuous-AF button: flip AF
+            ObjectiveDisplayUpdate  // nosepiece rotated manually (NOB): refresh display
+        } kind;
+        int hole;                   // objective hole position (1-based); unused for ToggleZdc
+    };
+
     OlympusIX83();
     ~OlympusIX83() { ; }
 
@@ -65,6 +78,11 @@ public:
     OlympusIX83& operator=(const OlympusIX83&) = delete;
 
     void shutdown();
+
+    // Called from the SDK notify callback (SDK thread). Parses an unsolicited
+    // TPC notification and, if relevant, enqueues it for the worker thread.
+    // Must not block / send commands.
+    void postNotification(const std::string& notification);
 
     std::vector<std::shared_ptr<LightSource>> getLightSources() { return {}; }
     std::vector<std::shared_ptr<DiscreteMovableComponent>> getDiscreteMovableComponents();
@@ -96,11 +114,33 @@ private:
     void _openShutter();
     void _closeShutter();
 
+    // Host-Key relay: touch-panel-driven objective change and ZDC toggle.
+    int _getObjectiveHole();
+    void _initHostKeyDisplay();
+    void _notificationWorkerLoop();
+    void _changeObjectiveViaSequence(int hole);
+    void _toggleContinuousAF();
+    void _setObjectiveDisplay(int newHole);
+
     void _send(std::string cmd);
     std::string _sendAndWait(std::string cmd);
 
     std::vector<std::string> _dichroicLabels;
     std::vector<std::string> _dichroicNames;
+
+    // Serializes every command transaction (caller-thread setters and the
+    // worker thread both drive _sendAndWait, which shares _mslCmd).
+    std::mutex _commandMutex;
+
+    // Worker thread that runs the (blocking) Host-Key command sequences off the
+    // SDK callback thread, fed by _notifyQueue.
+    moodycamel::BlockingConcurrentQueue<TpcEvent> _notifyQueue;
+    std::thread _notifyWorker;
+    std::atomic<bool> _running{false};
+
+    // State owned by the worker thread (initialized before the worker starts).
+    int _currentObjectiveHole{0};   // 0 == unknown
+    bool _zdcOn{false};
 
     HMODULE _sdkModule;
     fn_MSL_PM_GetInterfaceInfo	pfn_GetInterfaceInfo;

@@ -11,6 +11,15 @@
 #define	GT_MDK_PORT_MANAGER	"msl_pm.dll"
 #define CALLBACK    __stdcall
 
+// Host-Key control IDs (Appendix "Table Ap1" of the IX3-TPC I/F spec).
+// Objective hole n (1..6) maps to control ID (kObjectiveControlIdBase + n).
+static constexpr int kNumObjectiveHoles      = 6;
+static constexpr int kObjectiveControlIdBase = 150;   // OBSEQ1..6 == 151..156
+static constexpr int kZcafControlId          = 358;   // Continuous-AF start button
+// SKD display states (SKD p2): 0 = Disable, 1 = Normal, 2 = Pressed.
+static constexpr int kSkdNormal  = 1;
+static constexpr int kSkdPressed = 2;
+
 std::pair<std::string, std::string> parseResponse(const std::string& response);
 
 int CALLBACK CommandCallback(
@@ -28,7 +37,10 @@ int CALLBACK CommandCallback(
     return 0;
 }
 
-//	NOTIFICATION: call back entry from SDK port manager
+//	NOTIFICATION: call back entry from SDK port manager.
+//	Fires on an SDK thread for unsolicited notifications (SK, NOB, NFP, ...).
+//	The notification body is delivered in the MDK_MSL_CMD passed via pv; we read
+//	it the same way _sendAndWait reads a command response (m_Rsp / m_RspSize).
 int	CALLBACK NotifyCallback(
     [[maybe_unused]] ULONG		MsgId,			// Callback ID.
     [[maybe_unused]] ULONG		wParam,			// Callback parameter, it depends on callback event.
@@ -37,12 +49,28 @@ int	CALLBACK NotifyCallback(
     [[maybe_unused]] PVOID		pContext,		// This contains information on this call back function.
     [[maybe_unused]] PVOID		pCaller			// This is the pointer specified by a user in the requirement function.
 ) {
-    UNREFERENCED_PARAMETER(MsgId);
-    UNREFERENCED_PARAMETER(wParam);
-    UNREFERENCED_PARAMETER(lParam);
-    UNREFERENCED_PARAMETER(pv);
-    UNREFERENCED_PARAMETER(pContext);
-    UNREFERENCED_PARAMETER(pCaller);
+    OlympusIX83* olympusIX83 = reinterpret_cast<OlympusIX83*>(pContext);
+
+    std::string notification;
+    if (pv != nullptr) {
+        const MDK_MSL_CMD* note = reinterpret_cast<const MDK_MSL_CMD*>(pv);
+        size_t n = note->m_RspSize;
+        if (n > 0 && n <= MAX_RESPONSE_SIZE) {
+            notification.assign(reinterpret_cast<const char*>(note->m_Rsp), n);
+        }
+    }
+
+#ifdef DEBUG
+    // Discovery aid: confirm how the SDK delivers notification bodies. Once the
+    // format is verified on hardware this block can be trimmed.
+    std::cout << "\x1B[33mIX83: NOTIFY: \x1B[0m"
+              << "MsgId=" << MsgId << " wParam=" << wParam << " lParam=" << lParam
+              << " body=[" << notification << "]" << std::endl;
+#endif
+
+    if (olympusIX83 != nullptr && !notification.empty()) {
+        olympusIX83->postNotification(notification);
+    }
 
     return 0;
 }
@@ -143,19 +171,35 @@ OlympusIX83::OlympusIX83() :
     _sendAndWait("L 1,0");      // log in
     _sendAndWait("EN6 1,1");    // enable the jog wheel
     _sendAndWait("EN5 1");      // enable TPC
+    _sendAndWait("SK 1");       // enable Host-Key operation notifications (setting status)
+    _sendAndWait("NOB 1");      // enable objective active notification (manual rotation)
     //_sendAndWait("OPE 1");      // enter configuration mode
     _sendAndWait("OPE 0");      // leave configuration mode - needed for z-drive
     _sendAndWait("FSPD 70000,300000,60"); // set Z drive speed. parameters = initial_speed, constant_speed, accel_time
 
 
-    auto [dNames,dLabels] = _getDichroicNames(); 
-    _dichroicNames = dNames; // 
+    auto [dNames,dLabels] = _getDichroicNames();
+    _dichroicNames = dNames; //
     _dichroicLabels = dLabels;
     _openShutter();
+
+    // Objective and ZDC are driven by the operator on the touch panel. After
+    // login the TPC forces those buttons to be Host Keys and greys them out, so
+    // we un-grey them (SKD) and start a worker thread that relays each press.
+    _initHostKeyDisplay();
+    _running = true;
+    _notifyWorker = std::thread(&OlympusIX83::_notificationWorkerLoop, this);
 }
 
 void OlympusIX83::shutdown() {
     if (_ifData != nullptr) {
+        // Stop the notification worker before tearing down the interface.
+        _running = false;
+        _notifyQueue.enqueue(TpcEvent{TpcEvent::ToggleZdc, 0});   // wake the worker
+        if (_notifyWorker.joinable()) {
+            _notifyWorker.join();
+        }
+
         _closeShutter();
         _logOut();
 
@@ -201,6 +245,7 @@ std::vector<std::string> OlympusIX83::listDichroicMirrors() const {
 }
 
 void OlympusIX83::setDichroicMirror(const std::string& dichroicMirrorLabel) {
+    std::lock_guard<std::mutex> lock(_commandMutex);
     auto it = std::find(_dichroicLabels.begin(), _dichroicLabels.end(), dichroicMirrorLabel);
     if (it != _dichroicLabels.end()) {
         // FOUND
@@ -218,11 +263,13 @@ std::vector<OlympusIX83::StageAxis> OlympusIX83::supportedStageAxes() const {
 }
 
 OlympusIX83::StagePosition OlympusIX83::getStagePosition() {
+    std::lock_guard<std::mutex> lock(_commandMutex);
     double zPos = _getFocusPositionUM();
     return StagePosition({-1.0, -1.0, zPos, false, 0});
 }
 
 void OlympusIX83::setStagePosition(const StagePosition &pos) {
+    std::lock_guard<std::mutex> lock(_commandMutex);
     double x, y, z;
     bool usingHardwareAF;
     int afOffset;
@@ -317,6 +364,119 @@ void OlympusIX83::_openShutter() {
 
 void OlympusIX83::_closeShutter() {
     _sendAndWait("ESH1 1");
+}
+
+int OlympusIX83::_getObjectiveHole() {
+    std::string response = _sendAndWait("OB?");   // response: "OB <pos>"
+    int hole = 0;
+    sscanf_s(response.c_str(), "%*s %d", &hole);
+    return hole;
+}
+
+// Un-grey the touch-panel Host-Key buttons and reflect the current state. Runs
+// once during construction (single-threaded), so it does not take the mutex.
+void OlympusIX83::_initHostKeyDisplay() {
+    _currentObjectiveHole = _getObjectiveHole();
+    _zdcOn = false;
+
+    // Display each configured objective button (Pressed for the one in the
+    // light path, Normal for the rest). Empty holes simply reply with an error
+    // that we ignore.
+    for (int hole = 1; hole <= kNumObjectiveHoles; ++hole) {
+        int state = (hole == _currentObjectiveHole) ? kSkdPressed : kSkdNormal;
+        _sendAndWait(std::format("SKD {},{}", kObjectiveControlIdBase + hole, state));
+    }
+    _sendAndWait(std::format("SKD {},{}", kZcafControlId, kSkdNormal));   // ZDC off
+}
+
+// Worker thread: relays operator touch-panel presses into hardware commands.
+void OlympusIX83::_notificationWorkerLoop() {
+    while (_running) {
+        TpcEvent ev;
+        _notifyQueue.wait_dequeue(ev);
+        if (!_running) {
+            break;
+        }
+        try {
+            switch (ev.kind) {
+            case TpcEvent::ChangeObjective:       _changeObjectiveViaSequence(ev.hole); break;
+            case TpcEvent::ToggleZdc:             _toggleContinuousAF();                break;
+            case TpcEvent::ObjectiveDisplayUpdate: {
+                std::lock_guard<std::mutex> lock(_commandMutex);
+                _setObjectiveDisplay(ev.hole);
+                break;
+            }
+            }
+        } catch (const std::exception& e) {
+#ifdef DEBUG
+            std::cout << "\x1B[31mIX83: notify worker error: \x1B[0m" << e.what() << std::endl;
+#else
+            (void)e;
+#endif
+        }
+    }
+}
+
+// Move SKD highlight from the previous objective to `newHole`. Caller holds the
+// command mutex. Updates _currentObjectiveHole.
+void OlympusIX83::_setObjectiveDisplay(int newHole) {
+    if (_currentObjectiveHole >= 1 && _currentObjectiveHole <= kNumObjectiveHoles &&
+        _currentObjectiveHole != newHole) {
+        _sendAndWait(std::format("SKD {},{}", kObjectiveControlIdBase + _currentObjectiveHole, kSkdNormal));
+    }
+    if (newHole >= 1 && newHole <= kNumObjectiveHoles) {
+        _sendAndWait(std::format("SKD {},{}", kObjectiveControlIdBase + newHole, kSkdPressed));
+    }
+    _currentObjectiveHole = newHole;
+}
+
+// Operator tapped an objective button: run the documented objective sequence
+// (BSW note Fig. 6). TPC/MMI are disabled around the action.
+void OlympusIX83::_changeObjectiveViaSequence(int hole) {
+    if (hole < 1 || hole > kNumObjectiveHoles) {
+        return;
+    }
+    std::lock_guard<std::mutex> lock(_commandMutex);
+    _sendAndWait("EN5 0");
+    _sendAndWait(std::format("OBSEQ {}", hole));
+    _setObjectiveDisplay(hole);
+    _sendAndWait("EN5 1");
+}
+
+// Operator tapped the Continuous-AF button: start/stop ZDC continuous AF
+// (BSW note Fig. 22).
+void OlympusIX83::_toggleContinuousAF() {
+    std::lock_guard<std::mutex> lock(_commandMutex);
+    bool turnOn = !_zdcOn;
+    _sendAndWait("EN5 0");
+    _sendAndWait(turnOn ? "AF 2" : "AF 0");
+    _sendAndWait(std::format("SKD {},{}", kZcafControlId, turnOn ? kSkdPressed : kSkdNormal));
+    _sendAndWait("EN5 1");
+    _zdcOn = turnOn;
+}
+
+// Parse an unsolicited TPC notification and enqueue a relay event if relevant.
+// Runs on the SDK callback thread: must not block or send commands.
+void OlympusIX83::postNotification(const std::string& notification) {
+    int id = 0;
+    int state = 0;
+    if (sscanf_s(notification.c_str(), "SK %d,%d", &id, &state) == 2) {
+        if (state != 1) {
+            return;   // act on press (1), ignore release (0)
+        }
+        if (id >= kObjectiveControlIdBase + 1 && id <= kObjectiveControlIdBase + kNumObjectiveHoles) {
+            _notifyQueue.enqueue(TpcEvent{TpcEvent::ChangeObjective, id - kObjectiveControlIdBase});
+        } else if (id == kZcafControlId) {
+            _notifyQueue.enqueue(TpcEvent{TpcEvent::ToggleZdc, 0});
+        }
+        return;
+    }
+
+    int hole = 0;
+    if (sscanf_s(notification.c_str(), "NOB %d", &hole) == 1) {
+        // Nosepiece rotated manually: refresh the button highlight only.
+        _notifyQueue.enqueue(TpcEvent{TpcEvent::ObjectiveDisplayUpdate, hole});
+    }
 }
 
 void OlympusIX83::_send(std::string cmd) {
