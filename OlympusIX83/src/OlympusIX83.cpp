@@ -16,21 +16,23 @@
 // Objective hole n (1..6) maps to control ID (kObjectiveControlIdBase + n).
 static constexpr int kNumObjectiveHoles      = 6;
 static constexpr int kObjectiveControlIdBase = 150;   // OBSEQ1..6 == 151..156
+static constexpr int kFesControlId           = 354;   // Focus escape/return button (Host Key)
 static constexpr int kZcafControlId          = 358;   // Continuous-AF start button (Host Key)
 // SKD display states (SKD p2): 0 = Disable, 1 = Normal, 2 = Pressed.
 static constexpr int kSkdNormal  = 1;
 static constexpr int kSkdPressed = 2;
 
-// Direct (non-Host-Key) focus/ZDC panel controls (Appendix "Table Ap1": marked
-// SD, not SK). They drive the scope themselves and report via the 'O' operation
-// notification, so we only un-grey their display with SD and don't relay them.
-// (356 FFC / 360 ZAFC fine-coarse have no SD mark, so there is no host command
-// to enable them; they follow their parent slider. 354 FES is a Host Key.)
+// Direct (non-Host-Key) focus/ZDC panel controls: they drive the scope
+// themselves and report via the 'O' operation notification, so we only un-grey
+// their display with SD and don't relay them. (Confirmed accepted by SD on the
+// hardware; 356 FFC rejects SD so it cannot be host-enabled and follows its
+// slider. 354 FES is a Host Key and is handled separately.)
 static constexpr int kDirectControlIds[] = {
     353,   // FSL  Focus slider
     355,   // FC   Focus coordinates (Z readout)
     357,   // ZOAF One-Shot AF (find focus)
     359,   // ZASL Offset (aberration) lens slider
+    360,   // ZAFC Offset lens fine/coarse
 };
 // SD display state (SD p2): 0 = Disable, 1 = Enable.
 static constexpr int kSdEnable = 1;
@@ -435,15 +437,17 @@ int OlympusIX83::_getObjectiveHole() {
 void OlympusIX83::_initHostKeyDisplay() {
     _currentObjectiveHole = _getObjectiveHole();
     _zdcOn = false;
+    _focusEscaped = false;
 
     // Host-Key buttons: objective buttons (Pressed for the one in the light
-    // path, Normal for the rest; empty holes just reply with an error we ignore)
-    // and the two AF push-buttons.
+    // path, Normal for the rest; empty holes just reply with an error we ignore),
+    // the Continuous-AF push-button, and the focus escape/return button.
     for (int hole = 1; hole <= kNumObjectiveHoles; ++hole) {
         int state = (hole == _currentObjectiveHole) ? kSkdPressed : kSkdNormal;
         _sendAndWait(std::format("SKD {},{}", kObjectiveControlIdBase + hole, state));
     }
     _sendAndWait(std::format("SKD {},{}", kZcafControlId, kSkdNormal));   // Continuous AF off
+    _sendAndWait(std::format("SKD {},{}", kFesControlId, kSkdNormal));    // Not escaped
 
     // Direct controls: enable their display so the operator can use them.
     for (int id : kDirectControlIds) {
@@ -464,6 +468,7 @@ void OlympusIX83::_notificationWorkerLoop() {
             switch (ev.kind) {
             case TpcEvent::ChangeObjective:       _changeObjectiveViaSequence(ev.hole); break;
             case TpcEvent::ToggleZdc:             _toggleContinuousAF();                break;
+            case TpcEvent::FocusEscape:           _focusEscape();                       break;
             case TpcEvent::ObjectiveDisplayUpdate: {
                 std::lock_guard<std::mutex> lock(_commandMutex);
                 _setObjectiveDisplay(ev.hole);
@@ -514,6 +519,26 @@ void OlympusIX83::_toggleContinuousAF() {
     _zdcOn = turnOn;
 }
 
+// Operator tapped the Focus escape/return button. Escape drives the objective to
+// its minimum position (away from the sample); the next tap returns it to the
+// focus position saved at escape time. There is no documented "escape" command,
+// so this is done with a focus move (FG 0 clamps at the near limit).
+void OlympusIX83::_focusEscape() {
+    std::lock_guard<std::mutex> lock(_commandMutex);
+    _sendAndWait("EN5 0");
+    if (!_focusEscaped) {
+        _preEscapeZ = _getFocusPositionUM();
+        _setFocusPositionUM(0.0);   // go to minimum (objective away from sample)
+        _sendAndWait(std::format("SKD {},{}", kFesControlId, kSkdPressed));
+        _focusEscaped = true;
+    } else {
+        _setFocusPositionUM(_preEscapeZ);
+        _sendAndWait(std::format("SKD {},{}", kFesControlId, kSkdNormal));
+        _focusEscaped = false;
+    }
+    _sendAndWait("EN5 1");
+}
+
 // Parse an unsolicited TPC notification and enqueue a relay event if relevant.
 // Runs on the SDK callback thread: must not block or send commands.
 void OlympusIX83::postNotification(const std::string& raw) {
@@ -539,6 +564,9 @@ void OlympusIX83::postNotification(const std::string& raw) {
         } else if (id == kZcafControlId) {
             ix83Log("  -> enqueue ToggleZdc");
             _notifyQueue.enqueue(TpcEvent{TpcEvent::ToggleZdc, 0});
+        } else if (id == kFesControlId) {
+            ix83Log("  -> enqueue FocusEscape");
+            _notifyQueue.enqueue(TpcEvent{TpcEvent::FocusEscape, 0});
         } else {
             ix83Log(std::format("  SK id={} not handled", id));
         }

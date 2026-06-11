@@ -66,6 +66,7 @@ public:
         enum Kind {
             ChangeObjective,        // operator tapped an objective button: run OBSEQ
             ToggleZdc,              // operator tapped the Continuous-AF button: flip AF
+            FocusEscape,            // operator tapped the focus escape/return button
             ObjectiveDisplayUpdate  // nosepiece rotated manually (NOB): refresh display
         } kind;
         int hole;                   // objective hole position (1-based); unused for ToggleZdc
@@ -120,6 +121,7 @@ private:
     void _notificationWorkerLoop();
     void _changeObjectiveViaSequence(int hole);
     void _toggleContinuousAF();
+    void _focusEscape();
     void _setObjectiveDisplay(int newHole);
 
     void _send(std::string cmd);
@@ -141,6 +143,8 @@ private:
     // State owned by the worker thread (initialized before the worker starts).
     int _currentObjectiveHole{0};   // 0 == unknown
     bool _zdcOn{false};
+    bool _focusEscaped{false};      // focus escape/return toggle state
+    double _preEscapeZ{0.0};        // focus position (um) saved at escape time
 
     HMODULE _sdkModule;
     fn_MSL_PM_GetInterfaceInfo	pfn_GetInterfaceInfo;
