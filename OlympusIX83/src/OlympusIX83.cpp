@@ -11,7 +11,6 @@
 #define	GT_MDK_PORT_MANAGER	"msl_pm.dll"
 #define CALLBACK    __stdcall
 
-std::string extractFirstTwo(const std::string& response);
 std::pair<std::string, std::string> parseResponse(const std::string& response);
 
 int CALLBACK CommandCallback(
@@ -177,12 +176,6 @@ std::vector<std::shared_ptr<DiscreteMovableComponent>> OlympusIX83::getDiscreteM
             }
         ));
     }
-    components.push_back(std::make_shared<DiscreteMovableComponentFunctor>(
-        "Focus Drift Compensation",
-        std::vector<std::string>{"Off","On"},
-        [this](const std::string& setting) {
-            _setZDCEnabled(setting == "On");
-        }));
     return components;
 }
 
@@ -318,41 +311,6 @@ void OlympusIX83::_setDichroicPosition(const std::string& dichroicName) {
     _sendAndWait(msg);
 }
 
-std::vector<std::string> OlympusIX83::_listObjectives() {
-    std::vector<std::string> objectives;
-    for (size_t i = 0; i < 6; i += 1) {
-        char buf[64];
-        sprintf_s(buf, sizeof(buf), "GOB %d", (int)i+1);
-        std::string response = _sendAndWait(buf);
-        objectives.push_back(extractFirstTwo(response));
-    }
-    return objectives;
-}
-
-void OlympusIX83::_setObjective(const std::string& objectiveName) {
-    auto dmList = _listObjectives();
-    auto it = std::find(dmList.cbegin(), dmList.cend(), objectiveName);
-    if (it == dmList.cend()) {
-        throw std::runtime_error("Objective mirror not found");
-    }
-    int idx = std::distance(dmList.cbegin(), it);
-    char buf[64];
-    sprintf_s(buf, sizeof(buf), "OB %d", idx + 1);
-    std::string response = _sendAndWait(buf);
-    if (response.find("OB +") == std::string::npos) {
-        throw std::runtime_error("error when changing objective");
-    }
-}
-
-void OlympusIX83::_setZDCEnabled(bool enabled) {
-    _sendAndWait("EN5 0");              // disable TPC/MMI around AF control
-    std::string response = _sendAndWait(enabled ? "AF 2" : "AF 0");
-    _sendAndWait("EN5 1");              // re-enable TPC/MMI
-    if (response.find("AF +") == std::string::npos) {
-        throw std::runtime_error("error when setting focus drift compensation");
-    }
-}
-
 void OlympusIX83::_openShutter() {
     _sendAndWait("ESH1 0");
 }
@@ -410,32 +368,6 @@ std::string OlympusIX83::_sendAndWait(std::string cmd) {
     std::cout << "\x1B[32mIX83: RECEIVED: \x1B[0m" << response << std::endl;
 #endif
     return response;
-}
-
-std::string extractFirstTwo(const std::string& response) {
-    // find the space after "GOB"
-    auto spacePos = response.find(' ');
-    if (spacePos == std::string::npos) return "";
-
-    // get everything after the space
-    std::string rest = response.substr(spacePos + 1);
-
-    // find first comma
-    auto comma1 = rest.find(',');
-    if (comma1 == std::string::npos) return "";
-
-    // extract first token
-    std::string first = rest.substr(0, comma1);
-
-    // find second comma (if any)
-    auto comma2 = rest.find(',', comma1 + 1);
-    // extract second token (up to next comma or end of string)
-    std::string second = rest.substr(
-        comma1 + 1,
-        (comma2 == std::string::npos ? std::string::npos : comma2 - comma1 - 1)
-    );
-
-    return first + "_" + second;
 }
 
 std::pair<std::string, std::string> parseResponse(const std::string& response) {

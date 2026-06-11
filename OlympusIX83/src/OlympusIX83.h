@@ -93,12 +93,8 @@ private:
     int _getDichroicPosition();
     void _setDichroicPosition(const std::string& dichroicName);
 
-    std::vector<std::string> _listObjectives();
-    void _setObjective(const std::string& objectiveName);
-
     void _openShutter();
     void _closeShutter();
-    void _setZDCEnabled(bool enabled);
 
     void _send(std::string cmd);
     std::string _sendAndWait(std::string cmd);
