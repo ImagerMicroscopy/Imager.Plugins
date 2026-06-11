@@ -22,12 +22,26 @@ static constexpr int kZcafControlId          = 358;   // Continuous-AF start but
 static constexpr int kSkdNormal  = 1;
 static constexpr int kSkdPressed = 2;
 
+// Direct (non-Host-Key) focus/ZDC panel controls. These drive the scope
+// themselves (they report via the 'O' operation notification, which is never
+// sent for Host Keys), so we only need to un-grey their display with SD.
+static constexpr int kDirectControlIds[] = {
+    353,   // FSL  Focus slider
+    354,   // FES  Focus escape / return
+    355,   // FC   Focus coordinates (Z readout)
+    356,   // FFC  Focus fine/coarse
+    359,   // ZASL Offset (aberration) lens slider
+    360,   // ZAFC Offset lens fine/coarse
+};
+// SD display state (SD p2): 0 = Disable, 1 = Enable.
+static constexpr int kSdEnable = 1;
+
 // -------------------------------------------------------------------------
 // Optional tracing. The build never defines DEBUG and std::cout is invisible
 // from a DLL inside the host, so this writes to OutputDebugString (DebugView /
 // VS) AND to %TEMP%\OlympusIX83.log. Off by default; flip kVerbose to true to
 // trace the command traffic and the touch-panel relay.
-static constexpr bool kVerbose = false;
+static constexpr bool kVerbose = true;
 
 static void ix83Log(const std::string& line) {
     if (!kVerbose) {
@@ -416,21 +430,27 @@ int OlympusIX83::_getObjectiveHole() {
     return hole;
 }
 
-// Un-grey the touch-panel Host-Key buttons and reflect the current state. Runs
-// once during construction (single-threaded), so it does not take the mutex.
+// Un-grey the touch-panel controls and reflect current state. Host Keys
+// (objectives, AF buttons) use SKD; direct controls (focus/offset sliders) use
+// SD. Runs once during construction (single-threaded), so it takes no mutex.
 void OlympusIX83::_initHostKeyDisplay() {
     _currentObjectiveHole = _getObjectiveHole();
     _zdcOn = false;
 
-    // Display each configured objective button (Pressed for the one in the
-    // light path, Normal for the rest). Empty holes simply reply with an error
-    // that we ignore.
+    // Host-Key buttons: objective buttons (Pressed for the one in the light
+    // path, Normal for the rest; empty holes just reply with an error we ignore)
+    // and the two AF push-buttons.
     for (int hole = 1; hole <= kNumObjectiveHoles; ++hole) {
         int state = (hole == _currentObjectiveHole) ? kSkdPressed : kSkdNormal;
         _sendAndWait(std::format("SKD {},{}", kObjectiveControlIdBase + hole, state));
     }
     _sendAndWait(std::format("SKD {},{}", kZoafControlId, kSkdNormal));   // One-Shot AF
     _sendAndWait(std::format("SKD {},{}", kZcafControlId, kSkdNormal));   // Continuous AF off
+
+    // Direct controls: enable their display so the operator can use them.
+    for (int id : kDirectControlIds) {
+        _sendAndWait(std::format("SD {},{}", id, kSdEnable));
+    }
 }
 
 // Worker thread: relays operator touch-panel presses into hardware commands.
