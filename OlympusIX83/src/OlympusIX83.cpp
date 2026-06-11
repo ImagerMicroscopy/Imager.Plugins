@@ -4,7 +4,6 @@
 #include <cctype>
 #include <cstdio>
 #include <format>
-#include <fstream>
 #include <iterator>
 #include <sstream>
 #include <stdexcept>
@@ -45,45 +44,11 @@ static constexpr int kSdEnable = 1;
 // unclear value mapping, so a direct, tunable distance is used instead.)
 static constexpr double kEscapeDistanceUM = 3000.0;   // 3 mm
 
-// -------------------------------------------------------------------------
-// Logging. Writes to stdout via printf (the host captures it, as the other
-// plugins do) AND to %TEMP%\OlympusIX83.log.
-//   ix83Interaction() - human-readable touch-panel actions, always shown.
-//   ix83Log()         - verbose command/notification trace, gated by kVerbose.
-static constexpr bool kVerbose = true;
-
-static void ix83Write(const std::string& line) {
-    static std::mutex logMutex;
-    std::lock_guard<std::mutex> lock(logMutex);
-
-    SYSTEMTIME st;
-    GetLocalTime(&st);
-    std::string stamped = std::format("[{:02}:{:02}:{:02}.{:03}] IX83: {}\n",
-        st.wHour, st.wMinute, st.wSecond, st.wMilliseconds, line);
-
-    printf("%s", stamped.c_str());
+// Logs a touch-panel action to the console (captured by the host).
+static void logAction(const std::string& msg) {
+    printf("IX83: %s\n", msg.c_str());
     fflush(stdout);
-
-    char dir[MAX_PATH];
-    DWORD n = GetTempPathA(MAX_PATH, dir);
-    if (n > 0) {
-        std::ofstream f(std::string(dir, n) + "OlympusIX83.log", std::ios::app);
-        if (f) {
-            f << stamped;
-        }
-    }
 }
-
-static void ix83Log(const std::string& line) {
-    if (kVerbose) {
-        ix83Write(line);
-    }
-}
-
-static void ix83Interaction(const std::string& msg) {
-    ix83Write("touchscreen: " + msg);
-}
-// -------------------------------------------------------------------------
 
 // Unsolicited TPC notifications arrive framed inside m_Cmd (m_Rsp is empty),
 // e.g. bytes "...A<B:N36.SK 153,1...". Extract the payload after the ":N<seq>"
@@ -251,9 +216,9 @@ OlympusIX83::OlympusIX83() :
     _sendAndWait("OPE 0");      // leave configuration mode - needed for z-drive
     _sendAndWait("FSPD 70000,300000,60"); // set Z drive speed. parameters = initial_speed, constant_speed, accel_time
     // ZDC AF needs an AF search limit set by the host before AF can run; it is
-    // cleared each remote session. Use the full focus range (clamped to the
-    // focus limit), which the operator can narrow for faster focusing.
-    _sendAndWait("AFL 0,1050000");
+    // cleared each remote session. Parameters are near,far with near > far, so
+    // this is the full focus range; the operator can narrow it for speed.
+    _sendAndWait("AFL 1050000,0");
 
 
     auto [dNames,dLabels] = _getDichroicNames();
@@ -261,9 +226,10 @@ OlympusIX83::OlympusIX83() :
     _dichroicLabels = dLabels;
     _openShutter();
 
-    // Objective and ZDC are driven by the operator on the touch panel. After
-    // login the TPC forces those buttons to be Host Keys and greys them out, so
-    // we un-grey them (SKD) and start a worker thread that relays each press.
+    // Objective, ZDC and focus are driven by the operator on the touch panel.
+    // Detect which holes hold an objective, un-grey the controls, and start the
+    // worker thread that relays each press.
+    _detectObjectiveHoles();
     _initHostKeyDisplay();
     _running = true;
     _notifyWorker = std::thread(&OlympusIX83::_notificationWorkerLoop, this);
@@ -451,6 +417,24 @@ int OlympusIX83::_getObjectiveHole() {
     return hole;
 }
 
+// Record which nosepiece holes hold an objective, so MCZ stepping can skip
+// empty ones. GOB reports "GOB <hole>,<name>,..."; an empty hole names NONE.
+void OlympusIX83::_detectObjectiveHoles() {
+    _objectiveHoles.clear();
+    for (int hole = 1; hole <= kNumObjectiveHoles; ++hole) {
+        std::string resp = _sendAndWait(std::format("GOB {}", hole));
+        auto c1 = resp.find(',');
+        if (c1 == std::string::npos) {
+            continue;
+        }
+        auto c2 = resp.find(',', c1 + 1);
+        std::string name = resp.substr(c1 + 1, c2 == std::string::npos ? std::string::npos : c2 - c1 - 1);
+        if (name != "NONE") {
+            _objectiveHoles.push_back(hole);
+        }
+    }
+}
+
 // Un-grey the touch-panel controls and reflect current state. Host Keys
 // (objectives, AF buttons) use SKD; direct controls (focus/offset sliders) use
 // SD. Runs once during construction (single-threaded), so it takes no mutex.
@@ -487,26 +471,11 @@ void OlympusIX83::_notificationWorkerLoop() {
         }
         try {
             switch (ev.kind) {
-            case TpcEvent::ChangeObjective:
-                ix83Interaction(std::format("Objective {} button pressed", ev.hole));
-                _changeObjectiveViaSequence(ev.hole);
-                break;
-            case TpcEvent::ToggleZdc:
-                ix83Interaction("Continuous AF button pressed");
-                _toggleContinuousAF();
-                break;
-            case TpcEvent::FocusEscape:
-                ix83Interaction("Escape button pressed");
-                _focusEscape();
-                break;
-            case TpcEvent::ObjectiveUp:
-                ix83Interaction("MCZ objective up button pressed");
-                _stepObjective(+1);
-                break;
-            case TpcEvent::ObjectiveDown:
-                ix83Interaction("MCZ objective down button pressed");
-                _stepObjective(-1);
-                break;
+            case TpcEvent::ChangeObjective:        _changeObjectiveViaSequence(ev.hole); break;
+            case TpcEvent::ToggleZdc:              _toggleContinuousAF();                break;
+            case TpcEvent::FocusEscape:            _focusEscape();                       break;
+            case TpcEvent::ObjectiveUp:            _stepObjective(+1);                   break;
+            case TpcEvent::ObjectiveDown:          _stepObjective(-1);                   break;
             case TpcEvent::ObjectiveDisplayUpdate: {
                 std::lock_guard<std::mutex> lock(_commandMutex);
                 _setObjectiveDisplay(ev.hole);
@@ -514,7 +483,7 @@ void OlympusIX83::_notificationWorkerLoop() {
             }
             }
         } catch (const std::exception& e) {
-            ix83Log(std::format("worker error: {}", e.what()));
+            logAction(std::format("error: {}", e.what()));
         }
     }
 }
@@ -532,9 +501,8 @@ void OlympusIX83::_setObjectiveDisplay(int newHole) {
     _currentObjectiveHole = newHole;
 }
 
-// Operator tapped an objective button: run the documented objective sequence
-// (BSW note Fig. 6). TPC/MMI are disabled around the action. The display is
-// only updated when OBSEQ succeeds (it errors on empty / mirror holes).
+// Run the OBSEQ objective-change sequence (TPC/MMI disabled around it). The
+// display is only updated when OBSEQ succeeds (it errors on empty/mirror holes).
 void OlympusIX83::_changeObjectiveViaSequence(int hole) {
     if (hole < 1 || hole > kNumObjectiveHoles) {
         return;
@@ -544,36 +512,47 @@ void OlympusIX83::_changeObjectiveViaSequence(int hole) {
     std::string resp = _sendAndWait(std::format("OBSEQ {}", hole));
     if (resp.find('+') != std::string::npos) {
         _setObjectiveDisplay(hole);
+        logAction(std::format("Objective switched to #{}", hole));
     }
     _sendAndWait("EN5 1");
 }
 
-// MCZ objective up/down button: step the nosepiece by one hole. Stops at the
-// ends of travel and at an empty/mirror hole (OBSEQ leaves the display as is).
+// MCZ objective up/down: move to the next/previous populated nosepiece hole,
+// skipping empty holes and stopping at the ends.
 void OlympusIX83::_stepObjective(int delta) {
-    int target = _currentObjectiveHole + delta;
-    if (target < 1 || target > kNumObjectiveHoles) {
+    auto it = std::find(_objectiveHoles.begin(), _objectiveHoles.end(), _currentObjectiveHole);
+    if (it == _objectiveHoles.end()) {
         return;
     }
-    _changeObjectiveViaSequence(target);
+    int idx = static_cast<int>(std::distance(_objectiveHoles.begin(), it)) + delta;
+    if (idx < 0 || idx >= static_cast<int>(_objectiveHoles.size())) {
+        return;
+    }
+    _changeObjectiveViaSequence(_objectiveHoles[idx]);
 }
 
-// Operator tapped the Continuous-AF button: start/stop ZDC continuous AF
-// (BSW note Fig. 22).
+// Start/stop ZDC continuous AF (BSW note Fig. 22). The new state is only kept
+// when the AF command succeeds.
 void OlympusIX83::_toggleContinuousAF() {
     std::lock_guard<std::mutex> lock(_commandMutex);
     bool turnOn = !_zdcOn;
     _sendAndWait("EN5 0");
-    _sendAndWait(turnOn ? "AF 2" : "AF 0");
-    _sendAndWait(std::format("SKD {},{}", kZcafControlId, turnOn ? kSkdPressed : kSkdNormal));
+    std::string resp = _sendAndWait(turnOn ? "AF 2" : "AF 0");
+    bool ok = resp.find('+') != std::string::npos;
+    if (ok) {
+        _zdcOn = turnOn;
+    }
+    _sendAndWait(std::format("SKD {},{}", kZcafControlId, _zdcOn ? kSkdPressed : kSkdNormal));
     _sendAndWait("EN5 1");
-    _zdcOn = turnOn;
+    if (turnOn && !ok) {
+        logAction("Continuous AF could not start - check the AF dichroic is in the light path");
+    } else {
+        logAction(_zdcOn ? "Continuous AF started" : "Continuous AF stopped");
+    }
 }
 
-// Operator tapped the Focus escape/return button. Escape moves the objective
-// kEscapeDistanceUM away from the sample (decreasing focus value); the next tap
-// returns it to the focus position saved at escape time. There is no documented
-// "escape" command, so this is a relative focus move (FG clamps at the limit).
+// Focus escape/return toggle. Escape moves the objective kEscapeDistanceUM away
+// from the sample; the next tap returns it to the focus saved at escape time.
 void OlympusIX83::_focusEscape() {
     std::lock_guard<std::mutex> lock(_commandMutex);
     _sendAndWait("EN5 0");
@@ -583,13 +562,15 @@ void OlympusIX83::_focusEscape() {
         if (target < 0.0) {
             target = 0.0;
         }
-        _setFocusPositionUM(target);   // move away from the sample
+        _setFocusPositionUM(target);
         _sendAndWait(std::format("SKD {},{}", kFesControlId, kSkdPressed));
         _focusEscaped = true;
+        logAction("Escape - objective moved away from sample");
     } else {
         _setFocusPositionUM(_preEscapeZ);
         _sendAndWait(std::format("SKD {},{}", kFesControlId, kSkdNormal));
         _focusEscaped = false;
+        logAction("Escape - objective returned to focus");
     }
     _sendAndWait("EN5 1");
 }
@@ -597,47 +578,37 @@ void OlympusIX83::_focusEscape() {
 // Parse an unsolicited TPC notification and enqueue a relay event if relevant.
 // Runs on the SDK callback thread: must not block or send commands.
 void OlympusIX83::postNotification(const std::string& raw) {
-    // Be robust to any leading framing/delimiter bytes (the protocol puts a '.'
-    // between the sequence marker and the payload): start at the keyword.
+    // The payload follows a framing prefix and a '.' delimiter; skip to the
+    // keyword.
     size_t start = 0;
     while (start < raw.size() && !isalpha(static_cast<unsigned char>(raw[start]))) {
         ++start;
     }
     std::string notification = raw.substr(start);
-    ix83Log(std::format("postNotification: [{}]", notification));
 
     int id = 0;
     int state = 0;
     if (sscanf_s(notification.c_str(), "SK %d,%d", &id, &state) == 2) {
         if (state != 1) {
-            ix83Log(std::format("  SK id={} state={} (release/ignored)", id, state));
             return;   // act on press (1), ignore release (0)
         }
         if (id >= kObjectiveControlIdBase + 1 && id <= kObjectiveControlIdBase + kNumObjectiveHoles) {
-            ix83Log(std::format("  -> enqueue ChangeObjective hole={}", id - kObjectiveControlIdBase));
             _notifyQueue.enqueue(TpcEvent{TpcEvent::ChangeObjective, id - kObjectiveControlIdBase});
         } else if (id == kZcafControlId) {
-            ix83Log("  -> enqueue ToggleZdc");
             _notifyQueue.enqueue(TpcEvent{TpcEvent::ToggleZdc, 0});
         } else if (id == kFesControlId) {
-            ix83Log("  -> enqueue FocusEscape");
             _notifyQueue.enqueue(TpcEvent{TpcEvent::FocusEscape, 0});
         } else if (id == kMczObjUpId) {
-            ix83Log("  -> enqueue ObjectiveUp");
             _notifyQueue.enqueue(TpcEvent{TpcEvent::ObjectiveUp, 0});
         } else if (id == kMczObjDownId) {
-            ix83Log("  -> enqueue ObjectiveDown");
             _notifyQueue.enqueue(TpcEvent{TpcEvent::ObjectiveDown, 0});
-        } else {
-            ix83Log(std::format("  SK id={} not handled", id));
         }
         return;
     }
 
     int hole = 0;
     if (sscanf_s(notification.c_str(), "NOB %d", &hole) == 1) {
-        // Nosepiece rotated manually: refresh the button highlight only.
-        ix83Log(std::format("  -> enqueue ObjectiveDisplayUpdate hole={}", hole));
+        // Manual nosepiece rotation: refresh the button highlight.
         _notifyQueue.enqueue(TpcEvent{TpcEvent::ObjectiveDisplayUpdate, hole});
     }
 }
@@ -663,8 +634,6 @@ void OlympusIX83::_send(std::string cmd) {
     if (!result) {
         throw std::runtime_error("command " + cmd + " did not send successfully");
     }
-
-    ix83Log(std::format("SENT: {}", cmd.substr(0, cmd.size() - 2)));
 }
 
 std::string OlympusIX83::_sendAndWait(std::string cmd) {
@@ -685,7 +654,6 @@ std::string OlympusIX83::_sendAndWait(std::string cmd) {
 
     size_t nBytesInResponse = _mslCmd.m_RspSize;
     std::string response(reinterpret_cast<char*>(_mslCmd.m_Rsp), nBytesInResponse);
-    ix83Log(std::format("RECV: {}", response));
     return response;
 }
 

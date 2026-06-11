@@ -8,6 +8,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "Windows.h"
 
@@ -117,8 +118,9 @@ private:
     void _openShutter();
     void _closeShutter();
 
-    // Host-Key relay: touch-panel-driven objective change and ZDC toggle.
+    // Host-Key relay: touch-panel-driven objective, ZDC and focus controls.
     int _getObjectiveHole();
+    void _detectObjectiveHoles();
     void _initHostKeyDisplay();
     void _notificationWorkerLoop();
     void _changeObjectiveViaSequence(int hole);
@@ -144,10 +146,11 @@ private:
     std::atomic<bool> _running{false};
 
     // State owned by the worker thread (initialized before the worker starts).
-    int _currentObjectiveHole{0};   // 0 == unknown
+    std::vector<int> _objectiveHoles;   // nosepiece holes that hold an objective
+    int _currentObjectiveHole{0};       // 0 == unknown
     bool _zdcOn{false};
-    bool _focusEscaped{false};      // focus escape/return toggle state
-    double _preEscapeZ{0.0};        // focus position (um) saved at escape time
+    bool _focusEscaped{false};          // focus escape/return toggle state
+    double _preEscapeZ{0.0};            // focus position (um) saved at escape time
 
     HMODULE _sdkModule;
     fn_MSL_PM_GetInterfaceInfo	pfn_GetInterfaceInfo;
