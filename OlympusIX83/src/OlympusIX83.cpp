@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <format>
+#include <fstream>
 #include <iostream>
 #include <iterator>
 #include <sstream>
@@ -20,6 +21,69 @@ static constexpr int kZcafControlId          = 358;   // Continuous-AF start but
 static constexpr int kSkdNormal  = 1;
 static constexpr int kSkdPressed = 2;
 
+// -------------------------------------------------------------------------
+// Diagnostics. The build never defines DEBUG and std::cout is invisible from a
+// DLL inside the host, so this writes to OutputDebugString (DebugView / VS) AND
+// to %TEMP%\OlympusIX83.log. Flip kVerbose to false to silence it.
+static constexpr bool kVerbose = true;
+
+static void ix83Log(const std::string& line) {
+    if (!kVerbose) {
+        return;
+    }
+    static std::mutex logMutex;
+    std::lock_guard<std::mutex> lock(logMutex);
+
+    SYSTEMTIME st;
+    GetLocalTime(&st);
+    std::string stamped = std::format("[{:02}:{:02}:{:02}.{:03}] IX83: {}\n",
+        st.wHour, st.wMinute, st.wSecond, st.wMilliseconds, line);
+
+    OutputDebugStringA(stamped.c_str());
+
+    char dir[MAX_PATH];
+    DWORD n = GetTempPathA(MAX_PATH, dir);
+    if (n > 0) {
+        std::ofstream f(std::string(dir, n) + "OlympusIX83.log", std::ios::app);
+        if (f) {
+            f << stamped;
+        }
+    }
+}
+
+// Printable view of a byte buffer (non-printables shown as '.'), size clamped.
+static std::string bytesAscii(const BYTE* p, size_t n) {
+    if (n > MAX_RESPONSE_SIZE) {
+        n = MAX_RESPONSE_SIZE;
+    }
+    std::string s;
+    for (size_t i = 0; i < n; ++i) {
+        unsigned char c = p[i];
+        s += (c >= 0x20 && c < 0x7f) ? static_cast<char>(c) : '.';
+    }
+    return s;
+}
+
+// Dump a callback's parameters so we can learn whether/which callback fires on a
+// touch-panel press and where the notification body actually lives.
+static void logCallbackEntry(const char* which, ULONG MsgId, ULONG wParam,
+                             ULONG lParam, PVOID pv, PVOID pCaller) {
+    std::string extra;
+    if (pv != nullptr) {
+        const MDK_MSL_CMD* c = reinterpret_cast<const MDK_MSL_CMD*>(pv);
+        bool isCmdStruct = (c->m_Signature == static_cast<DWORD>(GT_MDK_CMD_SIGNATURE));
+        extra = std::format(" isCmdStruct={} RspSize={} Rsp=[{}] CmdSize={} Cmd=[{}]",
+            isCmdStruct, static_cast<unsigned long>(c->m_RspSize),
+            bytesAscii(c->m_Rsp, c->m_RspSize),
+            static_cast<unsigned long>(c->m_CmdSize),
+            bytesAscii(c->m_Cmd, c->m_CmdSize));
+    }
+    ix83Log(std::format("{} MsgId={} w={} l={} pv={:#x} pCaller={:#x}{}",
+        which, MsgId, wParam, lParam,
+        reinterpret_cast<uintptr_t>(pv), reinterpret_cast<uintptr_t>(pCaller), extra));
+}
+// -------------------------------------------------------------------------
+
 std::pair<std::string, std::string> parseResponse(const std::string& response);
 
 int CALLBACK CommandCallback(
@@ -30,6 +94,8 @@ int CALLBACK CommandCallback(
     [[maybe_unused]] PVOID		pContext,		// This contains information on this call back function.
     [[maybe_unused]] PVOID		pCaller			// This is the pointer specified by a user in the requirement function.
 ) {
+    logCallbackEntry("CMD", MsgId, wParam, lParam, pv, pCaller);
+
     OlympusIX83* olympusIX83 = reinterpret_cast<OlympusIX83*>(pContext);
 
     olympusIX83->_callbackQueue.enqueue(0);
@@ -49,6 +115,8 @@ int	CALLBACK NotifyCallback(
     [[maybe_unused]] PVOID		pContext,		// This contains information on this call back function.
     [[maybe_unused]] PVOID		pCaller			// This is the pointer specified by a user in the requirement function.
 ) {
+    logCallbackEntry("NOTIFY", MsgId, wParam, lParam, pv, pCaller);
+
     OlympusIX83* olympusIX83 = reinterpret_cast<OlympusIX83*>(pContext);
 
     std::string notification;
@@ -59,14 +127,6 @@ int	CALLBACK NotifyCallback(
             notification.assign(reinterpret_cast<const char*>(note->m_Rsp), n);
         }
     }
-
-#ifdef DEBUG
-    // Discovery aid: confirm how the SDK delivers notification bodies. Once the
-    // format is verified on hardware this block can be trimmed.
-    std::cout << "\x1B[33mIX83: NOTIFY: \x1B[0m"
-              << "MsgId=" << MsgId << " wParam=" << wParam << " lParam=" << lParam
-              << " body=[" << notification << "]" << std::endl;
-#endif
 
     if (olympusIX83 != nullptr && !notification.empty()) {
         olympusIX83->postNotification(notification);
@@ -83,6 +143,7 @@ int	CALLBACK ErrorCallback(
     [[maybe_unused]] PVOID		pContext,		// This contains information on this call back function.
     [[maybe_unused]] PVOID		pCaller			// This is the pointer specified by a user in the requirement function.
 ) {
+    logCallbackEntry("ERROR", MsgId, wParam, lParam, pv, pCaller);
 
     return 0;
 }
@@ -172,6 +233,7 @@ OlympusIX83::OlympusIX83() :
     _sendAndWait("EN6 1,1");    // enable the jog wheel
     _sendAndWait("EN5 1");      // enable TPC
     _sendAndWait("SK 1");       // enable Host-Key operation notifications (setting status)
+    _sendAndWait("O 1");        // enable TPC control-button operation notifications
     _sendAndWait("NOB 1");      // enable objective active notification (manual rotation)
     //_sendAndWait("OPE 1");      // enter configuration mode
     _sendAndWait("OPE 0");      // leave configuration mode - needed for z-drive
@@ -397,6 +459,7 @@ void OlympusIX83::_notificationWorkerLoop() {
         if (!_running) {
             break;
         }
+        ix83Log(std::format("worker: event kind={} hole={}", static_cast<int>(ev.kind), ev.hole));
         try {
             switch (ev.kind) {
             case TpcEvent::ChangeObjective:       _changeObjectiveViaSequence(ev.hole); break;
@@ -408,11 +471,7 @@ void OlympusIX83::_notificationWorkerLoop() {
             }
             }
         } catch (const std::exception& e) {
-#ifdef DEBUG
-            std::cout << "\x1B[31mIX83: notify worker error: \x1B[0m" << e.what() << std::endl;
-#else
-            (void)e;
-#endif
+            ix83Log(std::format("worker error: {}", e.what()));
         }
     }
 }
@@ -458,16 +517,23 @@ void OlympusIX83::_toggleContinuousAF() {
 // Parse an unsolicited TPC notification and enqueue a relay event if relevant.
 // Runs on the SDK callback thread: must not block or send commands.
 void OlympusIX83::postNotification(const std::string& notification) {
+    ix83Log(std::format("postNotification: [{}]", notification));
+
     int id = 0;
     int state = 0;
     if (sscanf_s(notification.c_str(), "SK %d,%d", &id, &state) == 2) {
         if (state != 1) {
+            ix83Log(std::format("  SK id={} state={} (release/ignored)", id, state));
             return;   // act on press (1), ignore release (0)
         }
         if (id >= kObjectiveControlIdBase + 1 && id <= kObjectiveControlIdBase + kNumObjectiveHoles) {
+            ix83Log(std::format("  -> enqueue ChangeObjective hole={}", id - kObjectiveControlIdBase));
             _notifyQueue.enqueue(TpcEvent{TpcEvent::ChangeObjective, id - kObjectiveControlIdBase});
         } else if (id == kZcafControlId) {
+            ix83Log("  -> enqueue ToggleZdc");
             _notifyQueue.enqueue(TpcEvent{TpcEvent::ToggleZdc, 0});
+        } else {
+            ix83Log(std::format("  SK id={} not handled", id));
         }
         return;
     }
@@ -475,6 +541,7 @@ void OlympusIX83::postNotification(const std::string& notification) {
     int hole = 0;
     if (sscanf_s(notification.c_str(), "NOB %d", &hole) == 1) {
         // Nosepiece rotated manually: refresh the button highlight only.
+        ix83Log(std::format("  -> enqueue ObjectiveDisplayUpdate hole={}", hole));
         _notifyQueue.enqueue(TpcEvent{TpcEvent::ObjectiveDisplayUpdate, hole});
     }
 }
@@ -501,9 +568,7 @@ void OlympusIX83::_send(std::string cmd) {
         throw std::runtime_error("command " + cmd + " did not send successfully");
     }
 
-#ifdef DEBUG
-    std::cout << "\x1B[31mIX83: SENT: \x1B[0m" << cmd.substr(0, cmd.size() - 2) << std::endl;
-#endif
+    ix83Log(std::format("SENT: {}", cmd.substr(0, cmd.size() - 2)));
 }
 
 std::string OlympusIX83::_sendAndWait(std::string cmd) {
@@ -524,9 +589,7 @@ std::string OlympusIX83::_sendAndWait(std::string cmd) {
 
     size_t nBytesInResponse = _mslCmd.m_RspSize;
     std::string response(reinterpret_cast<char*>(_mslCmd.m_Rsp), nBytesInResponse);
-#ifdef DEBUG
-    std::cout << "\x1B[32mIX83: RECEIVED: \x1B[0m" << response << std::endl;
-#endif
+    ix83Log(std::format("RECV: {}", response));
     return response;
 }
 
