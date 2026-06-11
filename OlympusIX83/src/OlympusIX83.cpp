@@ -1,6 +1,7 @@
 #include "OlympusIX83.h"
 
 #include <algorithm>
+#include <cctype>
 #include <format>
 #include <fstream>
 #include <iostream>
@@ -64,6 +65,25 @@ static std::string bytesAscii(const BYTE* p, size_t n) {
     return s;
 }
 
+// Unsolicited TPC notifications arrive framed inside m_Cmd (m_Rsp is empty),
+// e.g. bytes "...A<B:N36<delim>SK 153,1...". Extract the payload after the
+// ":N<seq>" marker: skip the sequence digits and the following delimiter
+// byte(s), then take the printable run. Returns "" if no marker is found.
+static std::string extractNotificationBody(const BYTE* buf, size_t len) {
+    auto printable = [](BYTE c) { return c >= 0x20 && c < 0x7f; };
+    for (size_t i = 0; i + 2 < len; ++i) {
+        if (buf[i] == ':' && buf[i + 1] == 'N' && isdigit(static_cast<unsigned char>(buf[i + 2]))) {
+            size_t j = i + 2;
+            while (j < len && isdigit(static_cast<unsigned char>(buf[j]))) ++j;  // sequence digits
+            while (j < len && !printable(buf[j])) ++j;                           // delimiter(s)
+            size_t k = j;
+            while (k < len && printable(buf[k])) ++k;                            // payload
+            return std::string(reinterpret_cast<const char*>(buf + j), k - j);
+        }
+    }
+    return {};
+}
+
 // Dump a callback's parameters so we can learn whether/which callback fires on a
 // touch-panel press and where the notification body actually lives.
 static void logCallbackEntry(const char* which, ULONG MsgId, ULONG wParam,
@@ -122,10 +142,9 @@ int	CALLBACK NotifyCallback(
     std::string notification;
     if (pv != nullptr) {
         const MDK_MSL_CMD* note = reinterpret_cast<const MDK_MSL_CMD*>(pv);
-        size_t n = note->m_RspSize;
-        if (n > 0 && n <= MAX_RESPONSE_SIZE) {
-            notification.assign(reinterpret_cast<const char*>(note->m_Rsp), n);
-        }
+        size_t len = (note->m_CmdSize > 0 && note->m_CmdSize <= MAX_COMMAND_SIZE)
+                         ? note->m_CmdSize : MAX_COMMAND_SIZE;
+        notification = extractNotificationBody(note->m_Cmd, len);
     }
 
     if (olympusIX83 != nullptr && !notification.empty()) {
@@ -233,7 +252,6 @@ OlympusIX83::OlympusIX83() :
     _sendAndWait("EN6 1,1");    // enable the jog wheel
     _sendAndWait("EN5 1");      // enable TPC
     _sendAndWait("SK 1");       // enable Host-Key operation notifications (setting status)
-    _sendAndWait("O 1");        // enable TPC control-button operation notifications
     _sendAndWait("NOB 1");      // enable objective active notification (manual rotation)
     //_sendAndWait("OPE 1");      // enter configuration mode
     _sendAndWait("OPE 0");      // leave configuration mode - needed for z-drive
