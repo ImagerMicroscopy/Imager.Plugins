@@ -4,7 +4,6 @@
 #include <stdexcept>
 
 bool IsAckMessage(const pugi::xml_document& doc) {
-    return true;
     pugi::xpath_node_set nodes = doc.select_nodes("//AckMsg");
 
     // Check if any nodes were found
@@ -12,7 +11,15 @@ bool IsAckMessage(const pugi::xml_document& doc) {
 }
 
 bool ExperimentExecuted(const pugi::xml_document& doc) {
-    return true;
+    pugi::xml_node errorsNode = doc.child("SCMsg").child("ExperimentReport").child("ExpErrors");
+    if (errorsNode) {
+        try {
+            return std::stoi(errorsNode.child_value()) == 0;
+        } catch (const std::exception&) {
+            // fall through to the RepText fallback below
+        }
+    }
+
     pugi::xml_node node = doc.child("SCMsg").child("ExperimentReport").child("RepText");
     if (node){
         std::string rep_text = node.child_value();
@@ -58,38 +65,34 @@ std::vector<std::string> ParseMotorNamesFromDevices(const pugi::xml_document& do
     return motorNames;
 }
 
+// The attenuator's continuous range spans the full 14-bit DAC (0-16383); any
+// other NumofPositions (e.g. 20 for the discrete-filter lasers) is a set of
+// discrete steps. See URTC_COMMUNICATION.pcapng GetSetting replies.
+constexpr int kContinuousLaserPositions = 16384;
+
 Laser ParseLaserDetails(const pugi::xml_document& doc) {
-    
-    // Find the Device node that has Alloc children
+
+    // Find the Device node that has Alloc children: this is the attenuator
+    // sub-device for the laser, whose Config carries NumofPositions.
     pugi::xpath_node_set alloc_devices = doc.select_nodes("//Setting/Device[Alloc]");
     pugi::xml_node setting_node = doc.select_nodes("//Setting").first().node();
-
 
     pugi::xpath_node node = alloc_devices.first();
     pugi::xml_node device = node.node();
     pugi::xml_node config = device.child("Config");
 
     std::string deviceID = setting_node.attribute("Id").value();
-    std::vector<int> laserPowers, transValues;
     int numofPositions = std::stoi(config.attribute("NumofPositions").value());
-    for (pugi::xml_node alloc : device.children("Alloc")) {
-        laserPowers.push_back(std::stoi(alloc.attribute("Pos").value()));
-        transValues.push_back(std::stoi(alloc.attribute("Trans").value()));
-    }
-    bool hasDiscreteSettings = (numofPositions == laserPowers.size());
 
     // Find the Wavelength element and its value
     pugi::xpath_node wavelength_node = doc.select_node("//Device[Config[@Wavelength]]");
     std::string wavelength = wavelength_node.node().child("Config").attribute("Wavelength").value();
 
-
     Laser laser;
     laser.name = deviceID;
-    laser.hasDiscreteSettings = hasDiscreteSettings;
-    laser.maxSetting = numofPositions - 1;
-    laser.allowablePowers = laserPowers;
-    laser.transValues = transValues;
     laser.wavelength = wavelength;
+    laser.numofPositions = numofPositions;
+    laser.hasDiscreteSettings = (numofPositions != kContinuousLaserPositions);
 
     return laser;
 }
@@ -99,15 +102,15 @@ std::vector<Motor> ParseMotorDetails(const pugi::xml_document& doc) {
     pugi::xpath_node_set axis_nodes = doc.select_nodes("//Setting/Device/Axis");
 
     std::vector<Motor> motors;
-    Motor motor;
     for (const auto& node : axis_nodes) {
         pugi::xml_node axis = node.node();
         pugi::xml_node device = axis.parent();
 
+        Motor motor;
         motor.motorName = device.attribute("Id").value();
         motor.axisID = std::stoi(axis.attribute("Type").value());
-        motor.lowVal = std::stoi(axis.attribute("LowRange").value());
-        motor.highVal = std::stoi(axis.attribute("UpRange").value());
+        motor.lowStep = std::stoi(axis.attribute("LowRange").value());
+        motor.highStep = std::stoi(axis.attribute("UpRange").value());
         motors.push_back(motor);
     }
 

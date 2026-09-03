@@ -1,8 +1,12 @@
 #include "RTC.h"
 
 #include <Windows.h>
+#include <cmath>
 #include <format>
 #include <sstream>
+
+#include "ImagerPluginCore/ConfigManager.h"
+#include "ImagerPluginCore/PluginManager.h"
 
 template <typename T>
 T Limit(T a, T b, T c) {
@@ -29,15 +33,32 @@ void RTC::init() {
     _connHandler.acceptConnection();
     _connHandler.receiveNextSCMessage();
 
+    ConfigManager& cfg = PluginManager::Manager().getConfigManager();
+
     std::vector<Laser> lasers = _fetchLasers();
-    for (const Laser& laser : lasers) {
-        _setExternalShutter(laser,false);
+    for (Laser& laser : lasers) {
+        // Start every laser in a known-off state via the validated SetShutter
+        // path (the device never accepted the old SetDevPar-based approach).
+        _performCommand(_enableLaserMessage(laser.name, false));
+
+        ConfigPath laserPath = ConfigPath("Lasers") / laser.name;
+        laser.minPowerPercent = cfg.getDoubleSettingOrDefault(laserPath / "MinPowerPercent", 0.0).value;
+        laser.maxPowerPercent = cfg.getDoubleSettingOrDefault(laserPath / "MaxPowerPercent", 100.0).value;
+        if (laser.minPowerPercent > laser.maxPowerPercent) {
+            throw std::invalid_argument("MinPowerPercent > MaxPowerPercent for laser " + laser.name);
+        }
+
         _lasers.insert({_generateLaserIdentifier(laser), laser});
     }
 
     std::vector<Motor> motors = _fetchMotors();
-    for (const Motor& motor : motors) {
-        _motors.insert({_generateMotorIdentifier(motor), motor});
+    for (Motor& motor : motors) {
+        std::string stableIdentifier = _generateMotorIdentifier(motor);
+
+        ConfigPath motorPath = ConfigPath("Motors") / std::format("Axis{}", motor.axisID);
+        motor.displayName = cfg.getStringSettingOrDefault(motorPath / "DisplayName", stableIdentifier).value;
+
+        _motors.insert({stableIdentifier, motor});
     }
 
     _haveInit = true;
@@ -64,15 +85,16 @@ std::vector<std::shared_ptr<LightSource>> RTC::getLightSources() {
 
 std::vector<std::shared_ptr<ContinuouslyMovableComponent>> RTC::getContinuouslyMovableComponents() {
     std::vector<std::shared_ptr<ContinuouslyMovableComponent>> components;
-    for (const auto& motorName : listAvailableMotors()) {
-        auto [minVal, maxVal] = getMotorParams(motorName);
+    for (const auto& motorIdentifier : listAvailableMotors()) {
+        const Motor& motor = _motors.at(motorIdentifier);
+        auto [minVal, maxVal] = getMotorParams(motorIdentifier);
         components.push_back(std::make_shared<ContinuouslyMovableComponentFunctor>(
-            motorName,
+            motor.displayName,
             minVal,
             maxVal,
-            1.0,
-            [this, motorName](double setting) {
-                moveMotor(motorName, setting);
+            kMmPerStep,
+            [this, motorIdentifier](double setting) {
+                moveMotor(motorIdentifier, setting);
             }
         ));
     }
@@ -95,31 +117,25 @@ std::vector<std::string> RTC::listAvailableMotors() const {
     return motorIdentifiers;
 }
 
-void RTC::activateLaser(const std::string& laserIdentifier, double laserPower) {
-    laserPower = Limit(laserPower, 0.0, 100.0);
+void RTC::activateLaser(const std::string& laserIdentifier, double laserPowerPercent) {
     const Laser& laser = _lasers.at(laserIdentifier);
-    int setting = int(laserPower / 100.0 * laser.maxSetting);
-    if (laser.hasDiscreteSettings) {
-        double minDiff = std::numeric_limits<double>::infinity();
-        int closestIndex = 0;
-        for (int i = 0; i < laser.transValues.size(); i++){
-            double difference = std::abs(laser.transValues[i] - laserPower/1000);
-            if (difference < minDiff){
-                closestIndex = i;
-                minDiff = difference;
-            }
-        }
+    laserPowerPercent = Limit(laserPowerPercent, laser.minPowerPercent, laser.maxPowerPercent);
 
-        printf("Laser %s has discrete settings. Setting power to closest possible power:%i.",laser.wavelength.c_str(),laser.transValues[closestIndex]/100);
-        setting = laser.allowablePowers[closestIndex];
+    // Continuous lasers (NumofPositions==16384) and discrete lasers
+    // (NumofPositions==20) both take the same linear percent -> position
+    // mapping; only the resulting range differs (0-16383 vs 0-19).
+    int maxPosition = laser.numofPositions - 1;
+    int position = int(std::round(laserPowerPercent / 100.0 * maxPosition));
+    position = Limit(position, 0, maxPosition);
+
+    if (laser.hasDiscreteSettings) {
+        printf("Laser %s has discrete settings (%i positions). Setting position to %i.\n",
+               laser.wavelength.c_str(), laser.numofPositions, position);
     }
-    
-    _performCommand(_setLaserPowerMessage(laser.name, setting));
+
+    _performCommand(_setLaserPowerMessage(laser.name, position));
     _performCommand(_enableLaserMessage(laser.name, true));
-    _connHandler.sendXMLMessage(_getStateMessage(laser.name));
-    _connHandler.receiveNextSCMessage();
-    _connHandler.receiveNextSCMessage();
-    
+    _performGetState(laser.name);
 }
 
 void RTC::deactivateLasers() {
@@ -128,22 +144,18 @@ void RTC::deactivateLasers() {
     }
 }
 
-void RTC::moveMotor(const std::string& motorIdentifier, double setting) {
+void RTC::moveMotor(const std::string& motorIdentifier, double settingMm) {
     const Motor& motor = _motors.at(motorIdentifier);
-    _performCommand(_moveMotorMessage(motor.motorName,motor.axisID + 1, int(setting)));
-    _connHandler.sendXMLMessage(_getStateMessage(motor.motorName));
-    _connHandler.receiveNextSCMessage();
-    _connHandler.receiveNextSCMessage();
-    _connHandler.receiveNextSCMessage();
+    int steps = int(std::round(settingMm / kMmPerStep));
+    steps = Limit(steps, motor.lowStep, motor.highStep);
+
+    _performCommand(_moveMotorMessage(motor.motorName, motor.axisID + 1, steps));
+    _performGetState(motor.motorName);
 }
 
-void RTC::_setExternalShutter(const Laser& laser,bool active){
-    _performRTCQuery(_setExternalShutterMessage(laser.name, active));
-}
-
-std::tuple<int,int> RTC::getMotorParams(const std::string& motorIdentifier){
+std::tuple<double,double> RTC::getMotorParams(const std::string& motorIdentifier){
     const Motor& motor = _motors.at(motorIdentifier);
-    return {motor.lowVal,motor.highVal};
+    return {motor.lowStep * kMmPerStep, motor.highStep * kMmPerStep};
 }
 
 std::vector<Laser> RTC::_fetchLasers() {
@@ -162,7 +174,11 @@ std::vector<Laser> RTC::_fetchLasers() {
 
 std::string RTC::_generateLaserIdentifier(const Laser& laser) {
     constexpr const char* formatStr = "RTC_{}";
-    return std::format(formatStr, laser.wavelength);
+    std::string defaultIdentifier = std::format(formatStr, laser.wavelength);
+
+    ConfigManager& cfg = PluginManager::Manager().getConfigManager();
+    ConfigPath path = ConfigPath("Lasers") / laser.name / "DisplayName";
+    return cfg.getStringSettingOrDefault(path, defaultIdentifier).value;
 }
 
 std::vector<Motor> RTC::_fetchMotors() {
@@ -209,7 +225,7 @@ pugi::xml_document RTC::_makeEnumerateDevicesQuery() {
         "</Controlling>\n"
         "</PCMsg>";
     
-    std::string formatted = std::format(baseMessage, _msgID);
+    std::string formatted = std::format(baseMessage, _msgID++);
     return _xmlFormat(formatted);
 }
 
@@ -252,6 +268,19 @@ void RTC::_performCommand(const pugi::xml_document& command) {
     if (!ExperimentExecuted(response)) {
         printf("Command returned error");
     }
+}
+
+pugi::xml_document RTC::_performGetState(const std::string& deviceName) {
+    _connHandler.sendXMLMessage(_getStateMessage(deviceName));
+
+    pugi::xml_document ack = _connHandler.receiveNextSCMessage();
+    if (!IsAckMessage(ack)) {
+        std::ostringstream errMsg;
+        errMsg << "received non-ack for GetState on " << deviceName << ":\n" << ack;
+        throw std::runtime_error(errMsg.str());
+    } // Ack for the GetState
+
+    return _connHandler.receiveNextSCMessage(); // State
 }
 
 pugi::xml_document RTC::_triggerActionMessage() {
@@ -323,19 +352,6 @@ pugi::xml_document RTC::_moveMotorMessage(const std::string& motorName,int axisI
         )";
     
     std::string formatted = std::format(baseMessage, _msgID++, _kActionID, motorName,axisID, setting,axisID);
-    return _xmlFormat(formatted);
-}
-
-pugi::xml_document RTC::_setExternalShutterMessage(const std::string& laserName, bool state) {
-    constexpr const char* baseMessage =
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
-        "<PCMsg MsgId=\"{}\">\n"
-        "<Controlling>\n"
-        "<SetDevPar Id=\"{}-Shut.0\" Type=\"External\" Val=\"{}\"/>\n"
-        "</Controlling>\n"
-        "</PCMsg>";
-    
-    std::string formatted = std::format(baseMessage, _msgID++, laserName, int(state));
     return _xmlFormat(formatted);
 }
 
