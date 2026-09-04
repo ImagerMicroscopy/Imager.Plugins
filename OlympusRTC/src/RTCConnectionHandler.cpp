@@ -88,13 +88,15 @@ void RTCConnectionHandler::sendXMLMessage(const pugi::xml_document& xmlMessage) 
     const char* dataToSend = xmlString.c_str();
     int dataLength = static_cast<int>(xmlString.length());
 
+    int offset = 0;
     int nBytesRemaining = dataLength;
     while (nBytesRemaining > 0) {
-        int bytesSent = send(_socket, dataToSend, dataLength, 0);
+        int bytesSent = send(_socket, dataToSend + offset, nBytesRemaining, 0);
         if (bytesSent == SOCKET_ERROR) {
             throw std::runtime_error("couldn't write XML message to socket");
         }
 
+        offset += bytesSent;
         nBytesRemaining -= bytesSent;
     }
     if (DEBUG){
@@ -104,65 +106,39 @@ void RTCConnectionHandler::sendXMLMessage(const pugi::xml_document& xmlMessage) 
 }
 
 pugi::xml_document RTCConnectionHandler::receiveNextSCMessage() {
-    // strategy: read up to the "</SCMsg>" terminator, but no more
+    // strategy: accumulate bytes from the socket into a persistent buffer
+    // until the "</SCMsg>" terminator appears, then split the buffer there.
+    // Anything read past the terminator belongs to the next message and is
+    // kept in _recvBuffer for the next call, never discarded.
 
     const std::string terminator("</SCMsg>");
-    std::string receivedData;
-    std::string message;
-    std::vector<char> buffer(4096); // Peek buffer
-    int bytesReceived;
-    int readBytes = 0;
+    std::vector<char> buffer(4096);
 
-    while (true) {
-        // Peek at the data in the buffer
-        bytesReceived = recv(_socket, buffer.data(), buffer.size(), MSG_PEEK);
+    size_t terminatorPos = _recvBuffer.find(terminator);
+    while (terminatorPos == std::string::npos) {
+        int bytesReceived = recv(_socket, buffer.data(), static_cast<int>(buffer.size()), 0);
         if (bytesReceived == SOCKET_ERROR) {
-            throw std::runtime_error("recv (peek) failed with error: " + std::to_string(WSAGetLastError()));
+            throw std::runtime_error("recv failed with error: " + std::to_string(WSAGetLastError()));
         }
         if (bytesReceived == 0) {
-            throw std::runtime_error("Connection closed by the remote host or (during peek)");
+            throw std::runtime_error("Connection closed by the remote host");
         }
 
-        // Check if the terminator is present in the peeked data
-        receivedData.append(buffer.data(), bytesReceived);
-        size_t terminatorPos = receivedData.find(terminator);
-
-        if (terminatorPos != std::string::npos) {
-            // Terminator found, read only up to the terminator
-            
-            std::vector<char> readBuffer(terminatorPos + terminator.length());
-            int bytesToRead = static_cast<int>(readBuffer.size());
-            int bytesActuallyRead = recv(_socket, readBuffer.data(), bytesToRead, 0);
-            if (bytesActuallyRead == SOCKET_ERROR) {
-                throw std::runtime_error("recv (actual read) failed with error: " + std::to_string(WSAGetLastError()));
-            }
-            if (bytesActuallyRead > 0) {
-                message.append(readBuffer.data(), bytesActuallyRead);
-                readBytes =+ bytesActuallyRead;
-            }
-            break;
-        } else {
-            // If the buffer was full and no terminator was found, we need to consume the peeked data
-            // to avoid an infinite loop, and then peek again.
-            if (bytesReceived == buffer.size()) {
-                recv(_socket, buffer.data(), buffer.size(), 0); // Consume the peeked data
-                receivedData.clear(); // Reset receivedData for the next peek
-            } else {
-                // We received less than the buffer size and no terminator.
-                // The message might be incomplete, or the connection is slow.
-                // We'll continue peeking in the next iteration.
-                receivedData.clear(); // Reset for the next peek
-            }
-        }
+        _recvBuffer.append(buffer.data(), bytesReceived);
+        terminatorPos = _recvBuffer.find(terminator);
     }
 
+    size_t messageEnd = terminatorPos + terminator.length();
+    std::string message = _recvBuffer.substr(0, messageEnd);
+    _recvBuffer.erase(0, messageEnd);
+
     if (DEBUG){
-        printf("%sRECEIVED DATA (%i bytes)%s\n%s\n",GRN,readBytes,RESET,message.c_str());
+        printf("%sRECEIVED DATA (%zu bytes)%s\n%s\n",GRN,message.size(),RESET,message.c_str());
     }
     pugi::xml_document doc;
     pugi::xml_parse_result result = doc.load_string(message.c_str());
     if (!result) {
-        throw std::runtime_error("XML parse error on " + receivedData);
+        throw std::runtime_error("XML parse error on " + message);
     }
     return doc;
 }

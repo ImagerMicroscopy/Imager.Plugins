@@ -1,6 +1,8 @@
 #ifndef RTCCONNECTIONHANDLER_H
 #define RTCCONNECTIONHANDLER_H
 
+#include <string>
+
 #include <winsock2.h>
 #include <ws2tcpip.h>
 
@@ -20,6 +22,10 @@ public:
 private:
 
     SOCKET _socket;
+
+    // Bytes read past the end of the most recently extracted message. These
+    // belong to the next message and must survive across calls.
+    std::string _recvBuffer;
 };
 
 #endif

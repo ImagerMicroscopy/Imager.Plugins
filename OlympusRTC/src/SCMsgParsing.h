@@ -7,19 +7,20 @@
 #include "pugixml.hpp"
 
 struct Laser {
-    std::string name;
+    std::string name;              // device ID, e.g. "CAN.0-Laser.0"
     std::string wavelength;
-    bool hasDiscreteSettings;
-    std::vector<int> allowablePowers;
-    std::vector<int> transValues;
-    int maxSetting;
+    bool hasDiscreteSettings = false;
+    int numofPositions = 0;        // valid <Position> values are [0, numofPositions-1]
+    double minPowerPercent = 0.0;
+    double maxPowerPercent = 100.0;
 };
 
 struct Motor {
-    std::string motorName;
-    int axisID;
-    int lowVal;
-    int highVal;
+    std::string motorName;         // device ID, e.g. "CAN.0-GenMot.0"
+    int axisID = 0;
+    int lowStep = 0;
+    int highStep = 0;
+    std::string displayName;
 };
 
 bool IsAckMessage(const pugi::xml_document& doc);

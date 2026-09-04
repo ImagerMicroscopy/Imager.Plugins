@@ -29,8 +29,8 @@ private:
 
     void activateLaser(const std::string& laserIdentifier, double laserPowerPercent);
     void deactivateLasers();
-    void moveMotor(const std::string& motorIdentifier, double settingPercent);
-    std::tuple<int,int> getMotorParams(const std::string& motorIdentifier);
+    void moveMotor(const std::string& motorIdentifier, double settingMm);
+    std::tuple<double,double> getMotorParams(const std::string& motorIdentifier);
 
     std::vector<Laser> _fetchLasers();
     static std::string _generateLaserIdentifier(const Laser& laser);
@@ -40,17 +40,18 @@ private:
     pugi::xml_document _performRTCQuery(const pugi::xml_document& query);
     pugi::xml_document _makeEnumerateDevicesQuery();
     pugi::xml_document _makeSettingsQuery(const std::string& deviceName);
-    void _setExternalShutter(const Laser& laser,bool active);
 
     void _performCommand(const pugi::xml_document &command);
+    pugi::xml_document _performGetState(const std::string& deviceName);
     pugi::xml_document _triggerActionMessage();
     pugi::xml_document _enableLaserMessage(const std::string& laserName, bool enable);
     pugi::xml_document _setLaserPowerMessage(const std::string& laserName, int power);
     pugi::xml_document _moveMotorMessage(const std::string& motorName,int axisID, int setting);
-    pugi::xml_document _setExternalShutterMessage(const std::string& laserName, bool state);
     pugi::xml_document _getStateMessage(const std::string& deviceName);
 
     const int _kActionID = 999;
+    // Millimetres represented by a single TIRF motor step (GenMot.0 hardware constant).
+    static constexpr double kMmPerStep = 0.0025;
 
     static pugi::xml_document _xmlFormat(const std::string& str);
 
