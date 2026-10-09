@@ -61,7 +61,7 @@ AcquiredImage SimpleCamera::_generateNewImage() {
     auto endTime = std::chrono::steady_clock::now() + std::chrono::duration<double>(_exposureTime);
 
     std::pair<int, int> imageDimensions = _getSensorSize();
-    AcquiredImage image = NewRecycledImage(AcquiredImage::PixelFormat::Mono16, imageDimensions.first, imageDimensions.second);
+    AcquiredImage image = NewRecycledImage(AcquiredImage::PixelFormat::Mono16, imageDimensions.second, imageDimensions.first);
     std::uint16_t* dataPtr = reinterpret_cast<std::uint16_t*>(image.getData().get());
     _fillImage(dataPtr, imageDimensions.first * imageDimensions.second);
 
