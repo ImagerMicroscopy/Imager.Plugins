@@ -111,7 +111,15 @@ void OxxiusCombiner::_sendLaserCommand(int index, const std::string& cmd, bool i
     {
         fullCmd = std::format("{}\n", cmd);
     }
-    std::string response = _serialPort.writeAndReadUntilString(fullCmd, "\n");
+    std::string response;
+    try {
+        response = _serialPort.writeAndReadUntilString(fullCmd, "\n");
+    } catch (const std::runtime_error&) {
+        if (!ignoreResponse) {
+            throw;
+        }
+        return; // The response is ignored for this command anyway.
+    }
     // Laser commands echo back the command or return OK. Unless they reply inconsistently for some commands.
     if (!ignoreResponse) {
         if (response != cmd + "\r\n" && response != "OK\r\n") {
@@ -181,7 +189,12 @@ std::string OxxiusCombiner::_queryLaserInfo(int index) {
     std::string cmd = std::format("L{} INF?\n", index);
 
     
-    std::string response = _serialPort.writeAndReadUntilString(cmd, "\n");
+    std::string response;
+    try {
+        response = _serialPort.writeAndReadUntilString(cmd, "\n");
+    } catch (const std::runtime_error&) {
+        return {}; // No response: no laser at this index
+    }
 
     // Check for error responses
     if (response.find("timeout") != std::string::npos || 

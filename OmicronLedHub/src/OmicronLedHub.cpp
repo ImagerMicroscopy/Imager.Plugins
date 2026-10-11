@@ -30,9 +30,13 @@ void OmicronLedHub::shutdown() {
     if (_isInitialized) {
         deactivate();
 
-        // restore original operating mode
+        // restore original operating mode (best effort: the port is closed
+        // below regardless of whether the device answers)
         std::string gomCmd = std::format("?GOM{:04X}", _originalOperatingMode);
-        std::string gomResp = _sendCommand(gomCmd);
+        try {
+            _sendCommand(gomCmd);
+        } catch (const std::runtime_error&) {
+        }
 
         _serialPort.close();
         _isInitialized = false;
@@ -92,7 +96,14 @@ void OmicronLedHub::_initialize() {
     // while we are trying to do this.
     bool haveGOM = false;
     for (int attempt = 0; attempt < 10; ++attempt) {
-        std::string response = _sendCommand("?GOM");
+        std::string response;
+        try {
+            response = _sendCommand("?GOM");
+        } catch (const std::runtime_error&) {
+            // No complete response within the timeout; retry.
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            continue;
+        }
         nMatched = std::sscanf(response.c_str(), "!GOM%hu\r", &_originalOperatingMode);
         if (nMatched == 1) {
             haveGOM = true;

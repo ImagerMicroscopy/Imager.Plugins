@@ -1,8 +1,6 @@
-// WARNING: The Marzhauser Tango stage requires TWO stop bits according to the Haskell
-//          reference implementation. The current SerialPort class hardcodes ONE stop bit.
-//          This may cause communication issues. To fix this, SerialPort::open needs to be
-//          extended to accept a stopbits parameter, and the call below should use stopbits_two.
-//          Serial settings should be: 57600 baud, 8N2 (not 8N1).
+// The Marzhauser Tango stage requires TWO stop bits according to the Haskell
+// reference implementation. Serial settings should be: 57600 baud, 8N2 (not 8N1),
+// hence SerialFormat::f8N2 in the constructor below.
 
 #include "MarzhauserTango.h"
 
