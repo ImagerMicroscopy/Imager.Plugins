@@ -8,6 +8,7 @@ if host_machine.cpu_family() != 'x86_64'
   error('These plugins must be built for 64-bit architecture.')
 endif
 
+subdir('AsahiSpectraMAX')
 subdir('DummyCamera')
 subdir('DummyEquipment')
 subdir('Lambda10B')
@@ -22,3 +23,4 @@ endif
 subdir('OmicronLedHub')
 subdir('OxxiusCombiner')
 subdir('PriorProScanIII')
+subdir('ThorlabsFW102C')

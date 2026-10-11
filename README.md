@@ -15,6 +15,7 @@ Each plugin is built as a self-contained `.imagerplugin` library that the Imager
 
 | Plugin | Type | Hardware |
 | --- | --- | --- |
+| `AsahiSpectraMAX` | Illumination | Asahi Spectra Max 301 xenon light source |
 | `DummyCamera` | Camera | Simulated camera (testing) |
 | `NikonTi2` | Microscope body | Nikon Ti2 |
 | `NikonTiE` | Microscope body | Nikon Ti-E |
@@ -23,6 +24,7 @@ Each plugin is built as a self-contained `.imagerplugin` library that the Imager
 | `MarzhauserTango` | Stage | Märzhäuser Tango |
 | `PriorProScanIII` | Stage | Prior ProScan III |
 | `Lambda10B` | Filter wheel | Sutter Lambda 10-B |
+| `ThorlabsFW102C` | Filter wheel | Thorlabs FW102C (6 or 12 positions) |
 | `OmicronLedHub` | Illumination | Omicron LED Hub |
 | `OxxiusCombiner` | Laser | Oxxius laser combiner |
 | `VisiTIRF` | Illumination | Visitron TIRF |
