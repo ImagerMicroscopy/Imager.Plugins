@@ -27,6 +27,7 @@ shared_library(plugin_name,
   
   include_directories : core_inc,
   dependencies : [imager_core_dep],
+  name_prefix : '',
   name_suffix : 'imagerplugin',
   cpp_args : ['-DNOMINMAX', '-DIMAGER_EQUIPMENT_NAME="' + plugin_name + '"'],
   )
