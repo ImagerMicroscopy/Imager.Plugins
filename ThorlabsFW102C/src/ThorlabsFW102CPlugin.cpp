@@ -25,9 +25,6 @@ void InitPlugin() {
     for (int index = 1; index <= MAX_FILTER_WHEELS; ++index) {
         std::string fwKey = std::format("ThorlabsFW102C_{}", index);
         auto portResponse = configManager.getStringSettingOrDefault(fwKey / "Port", "");
-        if (portResponse.value.empty()) {
-            continue;  // no filter wheel configured at this index
-        }
         std::string portName = portResponse.value;
 
         auto baudrateResponse = configManager.getIntSettingOrDefault(fwKey / "Baudrate", 115200);
@@ -41,6 +38,10 @@ void InitPlugin() {
         for (int f = 1; f <= MAX_FILTERS; ++f) {
             auto filterResponse = configManager.getStringSettingOrDefault(fwKey / std::format("Filter{}", f), "");
             filterNames[f - 1] = filterResponse.value;
+        }
+
+        if (portName.empty()) {
+            continue;  // no filter wheel configured at this index
         }
 
         try {

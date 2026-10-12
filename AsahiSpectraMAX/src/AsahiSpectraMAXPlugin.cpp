@@ -26,9 +26,6 @@ void InitPlugin() {
     for (int index = 1; index <= MAX_LAMPS; ++index) {
         std::string lampKey = std::format("AsahiSpectraMAX_{}", index);
         auto portResponse = configManager.getStringSettingOrDefault(lampKey / "Port", "");
-        if (portResponse.value.empty()) {
-            continue;  // no lamp configured at this index
-        }
         std::string portName = portResponse.value;
 
         auto baudrateResponse = configManager.getIntSettingOrDefault(lampKey / "Baudrate", 9600);
@@ -44,6 +41,10 @@ void InitPlugin() {
             if (!filterResponse.value.empty()) {
                 channels.emplace_back(std::format("F{} - {}", f, filterResponse.value), f);
             }
+        }
+
+        if (portName.empty()) {
+            continue;  // no lamp configured at this index
         }
 
         std::string name = std::format("AsahiSpectraMAX {}", index);
