@@ -7,6 +7,18 @@
 
 #include "ImagerPluginCore/PluginManager.h"
 
+namespace {
+
+// Removes trailing CR/LF characters so responses can be shown in a single-line error message.
+std::string stripLineEnding(std::string s) {
+    while (!s.empty() && (s.back() == '\r' || s.back() == '\n')) {
+        s.pop_back();
+    }
+    return s;
+}
+
+}  // namespace
+
 AsahiSpectraMAX::AsahiSpectraMAX(const std::string& name, const std::string& portName, uint32_t baudRate,
                                        const std::vector<std::pair<std::string, int>>& channels, uint32_t timeoutMillis)
     : _name(name),
@@ -29,10 +41,11 @@ void AsahiSpectraMAX::initialize() {
 
 void AsahiSpectraMAX::shutdown() {
     if (_isInitialized) {
-        // close the shutter (best effort: the port is closed below regardless
-        // of whether the device answers)
+        // close the shutter and end remote mode (best effort: the port is closed
+        // below regardless of whether the device answers)
         try {
-            _sendCommand("S=0\r\n");
+            _sendCommand("S0");
+            _sendCommand("L");
         } catch (const std::runtime_error&) {
         }
 
@@ -65,25 +78,29 @@ void AsahiSpectraMAX::activate(const std::vector<ChannelSetting>& channelSetting
     }
     int filterIndex = it->second;
 
-    _sendCommand("S=0\r\n");  // close shutter
-    _sendCommand(std::format("F={}\r\n", filterIndex));  // set filter
-    _sendCommand(std::format("LI={}\r\n", static_cast<int>(std::lround(power))));  // set power
-    _sendCommand("S=1\r\n");  // open shutter
+    _sendCommand("S0");  // close shutter
+    _sendCommand(std::format("F{}", filterIndex));  // set filter
+    // the device accepts light intensities from 5 to 100 %
+    int intensity = std::clamp(static_cast<int>(std::lround(power)), 5, 100);
+    _sendCommand(std::format("LI{}", intensity));  // set power
+    _sendCommand("S1");  // open shutter
 }
 
 void AsahiSpectraMAX::deactivate() {
-    _sendCommand("S=0\r\n");  // close shutter
+    _sendCommand("S0");  // close shutter
 }
 
 void AsahiSpectraMAX::_sendCommand(const std::string& cmd) {
-    std::string response = _serialPort.writeAndReadUntilString(cmd, "\n");
+    // Commands and queries are terminated by CR LF and answered with "OK"
+    // (see the remote control command list in the MAX-302 instruction manual).
+    const std::string response = _serialPort.writeAndReadUntilString(cmd + "\r\n", "\n");
     if (response != "OK\r\n") {
-        throw std::runtime_error(std::format("Sent '{}' to Asahi, received '{}'", cmd, response));
+        throw std::runtime_error(std::format("Sent '{}' to Asahi, received '{}'", cmd, stripLineEnding(response)));
     }
 }
 
 double AsahiSpectraMAX::_readLampLife() {
-    // response is of the form "LF <hours>\r\n"
+    // response is of the form "LIFE nnn[h]\r\n" (replies are uppercase)
     std::string response = _serialPort.writeAndReadUntilString("LIFE?\r\n", "\n");
     std::string number;
     for (char c : response) {
@@ -94,6 +111,6 @@ double AsahiSpectraMAX::_readLampLife() {
     try {
         return std::stod(number);
     } catch (const std::exception&) {
-        throw std::runtime_error(std::format("Unexpected response to LIFE? from Asahi: '{}'", response));
+        throw std::runtime_error(std::format("Unexpected response to LIFE? from Asahi: '{}'", stripLineEnding(response)));
     }
 }
