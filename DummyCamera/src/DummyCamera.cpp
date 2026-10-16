@@ -1,6 +1,8 @@
 #include "DummyCamera.h"
 
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdlib>
 #include <format>
 #include <thread>
@@ -15,12 +17,37 @@ SimpleCamera::SimpleCamera() : _prng(std::random_device{}()) {
 
 void SimpleCamera::_initializeStars() {
     std::lock_guard<std::mutex> lock(_mutex);
-    _stars.resize(400);
-    for (auto& star : _stars) {
+    _stars.clear();
+    _stars.reserve(650);
+
+    // Warp stars: streak outward from the image center.
+    for (int i = 0; i < 400; ++i) {
+        Star star;
         star.x = _randDistX(_prng);
         star.y = _randDistY(_prng);
         star.z = _randDistZ(_prng);
         star.pz = star.z;
+        star.lum = _randDistLum(_prng);
+        star.size = _randDistSize(_prng);
+        star.passing = false;
+        _stars.push_back(star);
+    }
+
+    // Passing stars: same warp flow along the same rays from the image center,
+    // but with a large lateral magnitude so they fade in far from the center
+    // and streak outward from there.
+    for (int i = 0; i < 250; ++i) {
+        Star star;
+        double angle = _randDistAngle(_prng);
+        double magnitude = _randDistPassMag(_prng);
+        star.x = magnitude * std::cos(angle);
+        star.y = magnitude * std::sin(angle);
+        star.z = _randDistPassZ(_prng);
+        star.pz = star.z;
+        star.lum = _randDistPassLum(_prng);
+        star.size = _randDistPassSize(_prng);
+        star.passing = true;
+        _stars.push_back(star);
     }
 }
 
@@ -85,20 +112,82 @@ void SimpleCamera::_fillImage(std::uint16_t * data, size_t nPixels) {
 
     const int width = 1024;
     const int height = 1024;
-    auto drawLine = [&](int x0, int y0, int x1, int y1, std::uint16_t intensity) {
-        int dx = std::abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
-        int dy = -std::abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
-        int err = dx + dy, e2;
 
-        while (true) {
-            if (x0 >= 0 && x0 < width && y0 >= 0 && y0 < height) {
-                data[y0 * width + x0] = std::max(data[y0 * width + x0], intensity);
-            }
-            if (x0 == x1 && y0 == y1) break;
-            e2 = 2 * err;
-            if (e2 >= dy) { err += dy; x0 += sx; }
-            if (e2 <= dx) { err += dx; y0 += sy; }
+    auto addPixel = [&](int x, int y, double value) {
+        if (x < 0 || x >= width || y < 0 || y >= height) {
+            return;
         }
+        auto& pixel = data[y * width + x];
+        pixel = static_cast<std::uint16_t>(std::min(65535.0, static_cast<double>(pixel) + value));
+    };
+
+    // Soft round dot with a quadratic falloff. Overlapping dots accumulate, so
+    // crossing streaks and the crowded center build up a natural glow.
+    auto drawDot = [&](double cx, double cy, double intensity, double radius) {
+        if (intensity <= 0.0 || radius <= 0.0) {
+            return;
+        }
+        const int minX = static_cast<int>(std::floor(cx - radius));
+        const int maxX = static_cast<int>(std::ceil(cx + radius));
+        const int minY = static_cast<int>(std::floor(cy - radius));
+        const int maxY = static_cast<int>(std::ceil(cy + radius));
+        const double r2 = radius * radius;
+        for (int y = minY; y <= maxY; ++y) {
+            for (int x = minX; x <= maxX; ++x) {
+                double d2 = (x - cx) * (x - cx) + (y - cy) * (y - cy);
+                if (d2 >= r2) {
+                    continue;
+                }
+                double falloff = 1.0 - d2 / r2;
+                addPixel(x, y, intensity * falloff * falloff);
+            }
+        }
+    };
+
+    auto lerp = [](double a, double b, double t) { return a + (b - a) * t; };
+
+    // Streaks are chains of sub-pixel-stepped dots with interpolated
+    // intensity and radius, giving a tapered, anti-aliased line. The parameter
+    // interval is clipped to the frame first: stars close to the camera
+    // generate long segments that are almost entirely off-screen.
+    auto drawStreak = [&](double x0, double y0, double x1, double y1, double i0, double i1, double r0, double r1) {
+        double tLo = 0.0, tHi = 1.0;
+        const double margin = std::max(r0, r1) + 1.0;
+
+        auto clipAxis = [&](double a, double d, double lo, double hi) {
+            if (std::abs(d) < 1e-12) {
+                return a >= lo && a <= hi;
+            }
+            double tA = (lo - a) / d;
+            double tB = (hi - a) / d;
+            if (tA > tB) {
+                std::swap(tA, tB);
+            }
+            tLo = std::max(tLo, tA);
+            tHi = std::min(tHi, tB);
+            return true;
+        };
+
+        if (!clipAxis(x0, x1 - x0, -margin, width + margin) ||
+            !clipAxis(y0, y1 - y0, -margin, height + margin) ||
+            tHi < tLo) {
+            return;
+        }
+
+        const double clippedLength = std::hypot(x1 - x0, y1 - y0) * (tHi - tLo);
+        const int steps = std::max(1, static_cast<int>(std::ceil(clippedLength / 0.5)));
+        for (int k = 0; k <= steps; ++k) {
+            double t = tLo + (tHi - tLo) * k / steps;
+            drawDot(lerp(x0, x1, t), lerp(y0, y1, t), lerp(i0, i1, t), lerp(r0, r1, t));
+        }
+    };
+
+    // Stars are only visible on the sensor once they are close enough for the
+    // projection to move them away from the image center, so key brightness to
+    // that visible depth range rather than the full z range.
+    const double zFade = 150.0;
+    auto brightness = [&](double z) {
+        return std::clamp((zFade - z) / zFade, 0.0, 1.0);
     };
 
     double speed = 20.0 * _getExposureTime(); // Adjust speed based on exposure
@@ -107,21 +196,35 @@ void SimpleCamera::_fillImage(std::uint16_t * data, size_t nPixels) {
         star.z -= speed;
 
         if (star.z < 0.1) {
-            star.x = _randDistX(_prng);
-            star.y = _randDistY(_prng);
-            star.z = 1000.0;
+            if (star.passing) {
+                double angle = _randDistAngle(_prng);
+                double magnitude = _randDistPassMag(_prng);
+                star.x = magnitude * std::cos(angle);
+                star.y = magnitude * std::sin(angle);
+                star.z = _randDistPassSpawn(_prng);
+            } else {
+                star.x = _randDistX(_prng);
+                star.y = _randDistY(_prng);
+                star.z = 1000.0;
+            }
             star.pz = star.z;
         }
 
         // Project
         double fov = 500.0;
-        int prev_x = static_cast<int>(star.x * fov / star.pz + width / 2.0);
-        int prev_y = static_cast<int>(star.y * fov / star.pz + height / 2.0);
-        int curr_x = static_cast<int>(star.x * fov / star.z + width / 2.0);
-        int curr_y = static_cast<int>(star.y * fov / star.z + height / 2.0);
+        double prev_x = star.x * fov / star.pz + width / 2.0;
+        double prev_y = star.y * fov / star.pz + height / 2.0;
+        double curr_x = star.x * fov / star.z + width / 2.0;
+        double curr_y = star.y * fov / star.z + height / 2.0;
 
-        std::uint16_t intensity = static_cast<std::uint16_t>(std::min(65535.0, 65535.0 * (1000.0 - star.z) / 1000.0));
-        drawLine(prev_x, prev_y, curr_x, curr_y, intensity);
+        double prevBright = brightness(star.pz);
+        double currBright = brightness(star.z);
+        double intensity0 = 65535.0 * star.lum * prevBright;
+        double intensity1 = 65535.0 * star.lum * currBright;
+        // Stars swell as they approach the viewer; per-star size adds variety.
+        double radius0 = star.size * (0.6 + 2.4 * prevBright);
+        double radius1 = star.size * (0.6 + 2.4 * currBright);
+        drawStreak(prev_x, prev_y, curr_x, curr_y, intensity0, intensity1, radius0, radius1);
     }
 }
 
