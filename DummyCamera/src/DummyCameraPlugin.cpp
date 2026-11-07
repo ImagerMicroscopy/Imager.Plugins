@@ -3,6 +3,7 @@
 #include "ImagerPluginCore/PluginManager.h"
 
 #include "DummyCamera.h"
+#include "SMLMCamera.h"
 
 void InitPlugin() {
     // Imager is starting up. Create all objects and perform all work
@@ -15,6 +16,8 @@ void InitPlugin() {
 
     manager.addCamera(cam1);
     manager.addCamera(cam2);
+    manager.addCamera(std::make_shared<SMLMCamera>());
+    manager.addCamera(std::make_shared<SMLMCamera>());
 }
 
 void ShutdownPlugin() {

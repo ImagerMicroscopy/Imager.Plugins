@@ -23,6 +23,7 @@ shared_library(plugin_name,
   # Add your plugin source files here
   'src/DummyCamera.cpp',
   'src/DummyCameraPlugin.cpp',
+  'src/SMLMCamera.cpp',
   
   imager_api_source,
   
